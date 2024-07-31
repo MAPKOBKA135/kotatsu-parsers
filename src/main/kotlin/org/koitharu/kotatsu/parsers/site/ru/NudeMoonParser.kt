@@ -17,7 +17,7 @@ internal class NudeMoonParser(
 ) : MangaParser(context, MangaParserSource.NUDEMOON), MangaParserAuthProvider {
 
 	override val configKeyDomain = ConfigKey.Domain(
-		"x.nude-moon.fun",
+		"a.nude-moon.fun",
 		"nude-moon.org",
 		"nude-moon.net",
 	)
