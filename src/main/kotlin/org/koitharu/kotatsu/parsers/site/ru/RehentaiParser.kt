@@ -116,7 +116,7 @@ internal class RehentaiParser(
 				coverUrl = "https://api.$domain${img.getString("mid")}",
 				largeCoverUrl = "https://api.$domain${img.getString("high")}",
 				author = null,
-				isNsfw = false,
+				isNsfw = true,
 				state = null,
 				tags = jo.optJSONArray("genres")?.mapJSONToSet { g ->
 					MangaTag(
