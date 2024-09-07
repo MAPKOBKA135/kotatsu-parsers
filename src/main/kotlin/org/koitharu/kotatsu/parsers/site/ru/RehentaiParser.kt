@@ -32,14 +32,14 @@ internal class RehentaiParser(
 	context: MangaLoaderContext,
 ) : PagedMangaParser(context, MangaParserSource.REHENTAI, PAGE_SIZE), MangaParserAuthProvider, Interceptor {
 
-	private val userAgentKey = ConfigKey.UserAgent(context.getDefaultUserAgent())
+	override val userAgentKey = ConfigKey.UserAgent(context.getDefaultUserAgent())
 
 	private val baseHeaders: Headers
 		get() = Headers.Builder()
 			.add("User-Agent", config[userAgentKey])
 			.build()
 
-	override val headers
+	val headers
 		get() = getApiHeaders()
 
 	override val configKeyDomain = ConfigKey.Domain("rehentai.org")

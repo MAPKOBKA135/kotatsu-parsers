@@ -10,21 +10,24 @@ import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
+import org.koitharu.kotatsu.parsers.model.SortOrder.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGA_OVH", "МангаОВХ", "ru")
-internal class MangaOvhParser(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MANGA_OVH, pageSize = 20) {
+internal class MangaOvhParser(
+	context: MangaLoaderContext,
+) : PagedMangaParser(context, MangaParserSource.MANGA_OVH, pageSize = 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("manga.ovh")
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-		SortOrder.POPULARITY,
-		SortOrder.RATING,
-		SortOrder.UPDATED,
-		SortOrder.NEWEST,
+		POPULARITY,
+		RATING,
+		UPDATED,
+		NEWEST,
 	)
 
 	@InternalParsersApi
@@ -58,13 +61,18 @@ internal class MangaOvhParser(context: MangaLoaderContext) : PagedMangaParser(co
 				url.addQueryParameter(
 					"sort",
 					when (filter.sortOrder) {
-						SortOrder.UPDATED -> "updatedAt,desc"
-						SortOrder.POPULARITY -> "viewsCount,desc"
-						SortOrder.RATING -> "likesCount,desc"
-						SortOrder.NEWEST -> "createdAt,desc"
-						SortOrder.ALPHABETICAL,
-						SortOrder.ALPHABETICAL_DESC,
+						UPDATED -> "updatedAt,desc"
+						POPULARITY -> "viewsCount,desc"
+						RATING -> "likesCount,desc"
+						NEWEST -> "createdAt,desc"
+						ALPHABETICAL,
+						ALPHABETICAL_DESC,
 						-> throw IllegalArgumentException("Unsupported ${filter.sortOrder}")
+
+						UPDATED_ASC -> TODO()
+						POPULARITY_ASC -> TODO()
+						RATING_ASC -> TODO()
+						NEWEST_ASC -> TODO()
 					},
 				)
 				if (filter.tags.isNotEmpty()) {
