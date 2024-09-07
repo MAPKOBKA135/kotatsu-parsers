@@ -23,8 +23,6 @@ internal abstract class HeanCms(
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
-	private val userAgentKey = ConfigKey.UserAgent(context.getDefaultUserAgent())
-
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
@@ -34,8 +32,11 @@ internal abstract class HeanCms(
 		SortOrder.ALPHABETICAL,
 		SortOrder.ALPHABETICAL_DESC,
 		SortOrder.UPDATED,
+		SortOrder.UPDATED_ASC,
 		SortOrder.NEWEST,
+		SortOrder.NEWEST_ASC,
 		SortOrder.POPULARITY,
+		SortOrder.POPULARITY_ASC,
 	)
 
 	override val availableStates: Set<MangaState> =
@@ -76,8 +77,11 @@ internal abstract class HeanCms(
 					append("&orderBy=")
 					when (filter.sortOrder) {
 						SortOrder.POPULARITY -> append("total_views&order=desc")
+						SortOrder.POPULARITY_ASC -> append("total_views&order=asc")
 						SortOrder.UPDATED -> append("$paramsUpdated&order=desc")
+						SortOrder.UPDATED_ASC -> append("$paramsUpdated&order=asc")
 						SortOrder.NEWEST -> append("created_at&order=desc")
+						SortOrder.NEWEST_ASC -> append("created_at&order=asc")
 						SortOrder.ALPHABETICAL -> append("title&order=asc")
 						SortOrder.ALPHABETICAL_DESC -> append("title&order=desc")
 						else -> append("latest&order=desc")
@@ -164,10 +168,12 @@ internal abstract class HeanCms(
 		)
 	}
 
+	protected open val selectPages = ".flex > img:not([alt])"
+
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
-		return doc.select(".flex > img:not([alt])").map { img ->
+		return doc.select(selectPages).map { img ->
 			val url = img.src() ?: img.parseFailed("Image src not found")
 			MangaPage(
 				id = generateUid(url),

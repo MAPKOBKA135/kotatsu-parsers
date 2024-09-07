@@ -17,6 +17,11 @@ internal class PixHentai(context: MangaLoaderContext) :
 	)
 	override val configKeyDomain = ConfigKey.Domain("pixhentai.com")
 
+	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
+	}
+
 	override val isMultipleTagsSupported = false
 
 	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {

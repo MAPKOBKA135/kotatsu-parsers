@@ -22,9 +22,14 @@ internal abstract class HotComicsParser(
 	pageSize: Int = 24,
 ) : PagedMangaParser(context, source, pageSize) {
 
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST)
-
 	override val configKeyDomain = ConfigKey.Domain(domain)
+
+	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
+	}
+
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST)
 
 	override val isMultipleTagsSupported = false
 
@@ -32,7 +37,7 @@ internal abstract class HotComicsParser(
 
 	protected open val onePage = false
 
-	override val headers: Headers = Headers.Builder()
+	override fun getRequestHeaders(): Headers = Headers.Builder()
 		.add("User-Agent", UserAgents.CHROME_DESKTOP)
 		.build()
 

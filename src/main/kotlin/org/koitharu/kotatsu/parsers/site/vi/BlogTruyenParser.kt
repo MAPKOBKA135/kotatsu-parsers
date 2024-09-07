@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.parsers.site.vi
 
 import androidx.collection.ArrayMap
-import okhttp3.Headers
 import org.json.JSONArray
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -20,14 +19,17 @@ class BlogTruyenParser(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.BLOGTRUYEN, pageSize = 20) {
 
 	override val configKeyDomain: ConfigKey.Domain
-		get() = ConfigKey.Domain("blogtruyenmoi.com", "blogtruyen.vn")
+		get() = ConfigKey.Domain("blogtruyenmoi.com")
 
 	override val availableSortOrders: Set<SortOrder>
 		get() = EnumSet.of(SortOrder.UPDATED)
 
-	override val headers: Headers = Headers.Builder()
-		.add("User-Agent", UserAgents.CHROME_DESKTOP)
-		.build()
+	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
+
+	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
+	}
 
 	override val isMultipleTagsSupported = false
 
