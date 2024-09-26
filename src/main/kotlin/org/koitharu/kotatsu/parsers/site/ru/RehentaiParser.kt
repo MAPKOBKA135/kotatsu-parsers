@@ -15,7 +15,6 @@ import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.exception.ContentUnavailableException
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
 import java.text.DateFormat
@@ -39,8 +38,7 @@ internal class RehentaiParser(
 			.add("User-Agent", config[userAgentKey])
 			.build()
 
-	val headers
-		get() = getApiHeaders()
+	override fun getRequestHeaders() = getApiHeaders()
 
 	override val configKeyDomain = ConfigKey.Domain("rehentai.org")
 
@@ -63,6 +61,16 @@ internal class RehentaiParser(
 
 	private val regexLastUrlPath = Regex("/[^/]+/?$")
 
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+	)
+
 	override fun intercept(chain: Interceptor.Chain): Response {
 		val response = chain.proceed(chain.request())
 		if (response.code == TOO_MANY_REQUESTS) {
@@ -73,25 +81,19 @@ internal class RehentaiParser(
 		return response
 	}
 
-	override suspend fun getListPage(
-		page: Int,
-		query: String?,
-		tags: Set<MangaTag>?,
-		tagsExclude: Set<MangaTag>?,
-		sortOrder: SortOrder,
-	): List<Manga> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		copyCookies()
 		val domain = domain
 		val urlBuilder = StringBuilder()
 			.append("https://api.")
 			.append(domain)
-		if (query != null) {
+		if (!filter.query.isNullOrEmpty()) {
 			urlBuilder.append("/api/search/?query=")
-				.append(query.urlEncoded())
+				.append(filter.query.urlEncoded())
 		} else {
 			urlBuilder.append("/api/search/catalog/?ordering=")
-				.append(getSortKey(sortOrder))
-			tags?.forEach { tag ->
+				.append(getSortKey(order))
+			filter.tags.forEach { tag ->
 				urlBuilder.append("&genres=")
 				urlBuilder.append(tag.key)
 			}
@@ -116,16 +118,16 @@ internal class RehentaiParser(
 				coverUrl = "https://api.$domain${img.getString("mid")}",
 				largeCoverUrl = "https://api.$domain${img.getString("high")}",
 				author = null,
-				isNsfw = true,
+				isNsfw = false,
 				state = null,
 				tags = jo.optJSONArray("genres")?.mapJSONToSet { g ->
 					MangaTag(
 						title = g.getString("name").toTitleCase(),
 						key = g.getInt("id").toString(),
-						source = MangaParserSource.REHENTAI,
+						source = MangaParserSource.REMANGA,
 					)
 				}.orEmpty(),
-				source = MangaParserSource.REHENTAI,
+				source = MangaParserSource.REMANGA,
 			)
 		}
 	}
@@ -158,7 +160,7 @@ internal class RehentaiParser(
 				MangaTag(
 					title = g.getString("name").toTitleCase(),
 					key = g.getInt("id").toString(),
-					source = MangaParserSource.REHENTAI,
+					source = MangaParserSource.REMANGA,
 				)
 			},
 			chapters = chapters.mapChapters { i, jo ->
@@ -174,7 +176,8 @@ internal class RehentaiParser(
 				MangaChapter(
 					id = generateUid(id),
 					url = "/api/titles/chapters/$id/",
-					number = jo.getIntOrDefault("index", chapters.size - i),
+					number = jo.getIntOrDefault("index", chapters.size - i).toFloat(),
+					volume = 0,
 					name = buildString {
 						append("Том ")
 						append(jo.optString("tome", "0"))
@@ -188,7 +191,7 @@ internal class RehentaiParser(
 					},
 					uploadDate = dateFormat.tryParse(jo.getString("upload_date")),
 					scanlator = publishers?.optJSONObject(0)?.getStringOrNull("name"),
-					source = MangaParserSource.REHENTAI,
+					source = MangaParserSource.REMANGA,
 					branch = null,
 				)
 			}.asReversed(),
@@ -222,7 +225,7 @@ internal class RehentaiParser(
 		return result
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val domain = domain
 		val content = webClient.httpGet("https://api.$domain/api/forms/titles/?get=genres")
 			.parseJson().getJSONObject("content").getJSONArray("genres")
