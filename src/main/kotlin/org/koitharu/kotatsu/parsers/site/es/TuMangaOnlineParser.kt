@@ -14,7 +14,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("TUMANGAONLINE", "TuMangaOnline", "es")
-class TuMangaOnlineParser(context: MangaLoaderContext) : PagedMangaParser(
+internal class TuMangaOnlineParser(context: MangaLoaderContext) : PagedMangaParser(
 	context,
 	source = MangaParserSource.TUMANGAONLINE,
 	pageSize = 24,
@@ -29,8 +29,6 @@ class TuMangaOnlineParser(context: MangaLoaderContext) : PagedMangaParser(
 
 	private val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd", sourceLocale)
 
-	override val availableContentRating: Set<ContentRating> = EnumSet.of(ContentRating.SAFE, ContentRating.ADULT)
-
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.ALPHABETICAL,
 		SortOrder.ALPHABETICAL_DESC,
@@ -40,60 +38,115 @@ class TuMangaOnlineParser(context: MangaLoaderContext) : PagedMangaParser(
 		SortOrder.RATING,
 	)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+			isTagsExclusionSupported = true,
+			isMultipleTagsSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableContentRating = EnumSet.of(ContentRating.SAFE, ContentRating.ADULT),
+		availableDemographics = EnumSet.of(
+			Demographic.SHOUNEN,
+			Demographic.SHOUJO,
+			Demographic.SEINEN,
+			Demographic.JOSEI,
+			Demographic.KODOMO,
+		),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.MANHWA,
+			ContentType.MANHUA,
+			ContentType.NOVEL,
+			ContentType.ONE_SHOT,
+			ContentType.DOUJINSHI,
+			ContentType.OTHER,
+		),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
-			append("/library")
-			when (filter) {
-
-				is MangaListFilter.Search -> {
-					append("?title=")
-					append(filter.query.urlEncoded())
-				}
-
-				is MangaListFilter.Advanced -> {
-					append("?order_item=")
-					append(
-						when (filter.sortOrder) {
-							SortOrder.POPULARITY -> "likes_count&order_dir=desc"
-							SortOrder.POPULARITY_ASC -> "likes_count&order_dir=asc"
-							SortOrder.UPDATED -> "release_date&order_dir=desc"
-							SortOrder.UPDATED_ASC -> "release_date&order_dir=asc"
-							SortOrder.NEWEST -> "creation&order_dir=desc"
-							SortOrder.NEWEST_ASC -> "creation&order_dir=asc"
-							SortOrder.ALPHABETICAL -> "alphabetically&order_dir=asc"
-							SortOrder.ALPHABETICAL_DESC -> "alphabetically&order_dir=desc"
-							SortOrder.RATING -> "score&order_dir=desc"
-							SortOrder.RATING_ASC -> "score&order_dir=asc"
-						},
-					)
-					append("&filter_by=title")
-					if (filter.tags.isNotEmpty()) {
-						for (tag in filter.tags) {
-							append("&genders[]=")
-							append(tag.key)
-						}
-					}
-
-					filter.contentRating.oneOrThrowIfMany()?.let {
-						append("&erotic=")
-						append(
-							when (it) {
-								ContentRating.SAFE -> "false"
-								ContentRating.ADULT -> "true"
-								else -> ""
-							},
-						)
-					}
-				}
-
-				null -> {
-					append("?order_item=release_date&order_dir=desc&filter_by=title")
-				}
-			}
-			append("&_pg=1&page=")
+			append("/library?_pg=1&page=")
 			append(page.toString())
+
+			filter.query?.let {
+				append("&title=")
+				append(filter.query.urlEncoded())
+			}
+
+			append("&order_item=")
+			append(
+				when (order) {
+					SortOrder.POPULARITY -> "likes_count&order_dir=desc"
+					SortOrder.POPULARITY_ASC -> "likes_count&order_dir=asc"
+					SortOrder.UPDATED -> "release_date&order_dir=desc"
+					SortOrder.UPDATED_ASC -> "release_date&order_dir=asc"
+					SortOrder.NEWEST -> "creation&order_dir=desc"
+					SortOrder.NEWEST_ASC -> "creation&order_dir=asc"
+					SortOrder.ALPHABETICAL -> "alphabetically&order_dir=asc"
+					SortOrder.ALPHABETICAL_DESC -> "alphabetically&order_dir=desc"
+					SortOrder.RATING -> "score&order_dir=desc"
+					SortOrder.RATING_ASC -> "score&order_dir=asc"
+					else -> "release_date&order_dir=desc"
+				},
+			)
+			append("&filter_by=title")
+
+			filter.tags.forEach {
+				append("&genders[]=")
+				append(it.key)
+			}
+
+			filter.tagsExclude.forEach {
+				append("&exclude_genders[]=")
+				append(it.key)
+			}
+
+			append("&type=")
+			filter.types.forEach {
+				append(
+					when (it) {
+						ContentType.MANGA -> "manga"
+						ContentType.MANHWA -> "manhwa"
+						ContentType.MANHUA -> "manhua"
+						ContentType.NOVEL -> "novel"
+						ContentType.ONE_SHOT -> "one_shot"
+						ContentType.DOUJINSHI -> "doujinshi"
+						ContentType.OTHER -> "oel"
+						else -> ""
+					},
+				)
+			}
+
+			filter.demographics.forEach {
+				append("&demography=")
+				append(
+					when (it) {
+						Demographic.SHOUNEN -> "shounen"
+						Demographic.SHOUJO -> "shoujo"
+						Demographic.SEINEN -> "seinen"
+						Demographic.JOSEI -> "josei"
+						Demographic.KODOMO -> "kodomo"
+						else -> ""
+					},
+				)
+			}
+
+			filter.contentRating.oneOrThrowIfMany()?.let {
+				append("&erotic=")
+				append(
+					when (it) {
+						ContentRating.SAFE -> "false"
+						ContentRating.ADULT -> "true"
+						else -> ""
+					},
+				)
+			}
 		}
 		val doc = webClient.httpGet(url, getRequestHeaders()).parseHtml()
 		val items = doc.body().select("div.element")
@@ -286,7 +339,7 @@ class TuMangaOnlineParser(context: MangaLoaderContext) : PagedMangaParser(
 	}
 
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/library", getRequestHeaders()).parseHtml()
 		val elements = doc.body().select("div#books-genders > div > div")
 		return elements.mapNotNullToSet { element ->

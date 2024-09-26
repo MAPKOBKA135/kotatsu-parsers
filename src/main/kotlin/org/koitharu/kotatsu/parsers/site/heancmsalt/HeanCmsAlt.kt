@@ -28,10 +28,11 @@ internal abstract class HeanCmsAlt(
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
 
-	override val isSearchSupported = false
-
 	protected open val listUrl = "/comics"
 	protected open val datePattern = "MMMM d, yyyy"
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities()
 
 	init {
 		paginator.firstPage = 1
@@ -41,20 +42,15 @@ internal abstract class HeanCmsAlt(
 	protected open val selectManga = "div.grid.grid-cols-2 div:not([class]):contains(M)"
 	protected open val selectMangaTitle = "h5"
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getFilterOptions() = MangaListFilterOptions()
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
 			append(listUrl)
-			when (filter) {
-				is MangaListFilter.Search -> {
-					throw IllegalArgumentException(ErrorMessages.SEARCH_NOT_SUPPORTED)
-				}
-
-				is MangaListFilter.Advanced -> {
-				}
-
-				null -> {}
+			if (!filter.query.isNullOrEmpty()) {
+				throw IllegalArgumentException(ErrorMessages.SEARCH_NOT_SUPPORTED)
 			}
 			if (page > 1) {
 				append("?page=")
@@ -69,8 +65,8 @@ internal abstract class HeanCmsAlt(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirstOrThrow("img").src().orEmpty(),
-				title = div.selectFirstOrThrow(selectMangaTitle).text().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				title = div.selectFirst(selectMangaTitle)?.text().orEmpty(),
 				altTitle = null,
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
@@ -81,8 +77,6 @@ internal abstract class HeanCmsAlt(
 			)
 		}
 	}
-
-	override suspend fun getAvailableTags(): Set<MangaTag> = emptySet()
 
 	protected open val selectDesc = "div.description-container"
 	protected open val selectAlt = "div.series-alternative-names"
@@ -96,14 +90,14 @@ internal abstract class HeanCmsAlt(
 		val dateFormat = SimpleDateFormat(datePattern, sourceLocale)
 		return manga.copy(
 			altTitle = doc.selectFirst(selectAlt)?.text().orEmpty(),
-			description = doc.selectFirstOrThrow(selectDesc).html(),
+			description = doc.selectFirst(selectDesc)?.html(),
 			chapters = doc.select(selectChapter)
 				.mapChapters(reversed = true) { i, a ->
-					val dateText = a.selectFirstOrThrow(selectChapterDate).text()
+					val dateText = a.selectFirst(selectChapterDate)?.text()
 					val url = a.attrAsRelativeUrl("href").toAbsoluteUrl(domain)
 					MangaChapter(
 						id = generateUid(url),
-						name = a.selectFirstOrThrow(selectChapterTitle).text(),
+						name = a.selectFirst(selectChapterTitle)?.text() ?: "Chapter : ${i + 1f}",
 						number = i + 1f,
 						volume = 0,
 						url = url,
@@ -143,8 +137,6 @@ internal abstract class HeanCmsAlt(
 		}
 	}
 
-	// Parses dates in this form:
-	// 21 hours ago
 	private fun parseRelativeDate(date: String): Long {
 		val number = Regex("""(\d+)""").find(date)?.value?.toIntOrNull() ?: return 0
 		val cal = Calendar.getInstance()

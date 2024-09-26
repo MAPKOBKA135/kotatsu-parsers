@@ -39,9 +39,17 @@ internal abstract class HeanCms(
 		SortOrder.POPULARITY_ASC,
 	)
 
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED)
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
 
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED),
+	)
 
 	protected open val pathManga = "series"
 	protected open val apiPath
@@ -49,57 +57,53 @@ internal abstract class HeanCms(
 
 	protected open val paramsUpdated = "latest"
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(apiPath)
 			append("/query?query_string=")
-			when (filter) {
-				is MangaListFilter.Search -> {
-					append(filter.query.urlEncoded())
-				}
 
-				is MangaListFilter.Advanced -> {
-
-					filter.states.oneOrThrowIfMany()?.let {
-						append("&status=")
-						append(
-							when (it) {
-								MangaState.ONGOING -> "Ongoing"
-								MangaState.FINISHED -> "Completed"
-								MangaState.ABANDONED -> "Dropped"
-								MangaState.PAUSED -> "Hiatus"
-								else -> ""
-							},
-						)
-					}
-
-					append("&orderBy=")
-					when (filter.sortOrder) {
-						SortOrder.POPULARITY -> append("total_views&order=desc")
-						SortOrder.POPULARITY_ASC -> append("total_views&order=asc")
-						SortOrder.UPDATED -> append("$paramsUpdated&order=desc")
-						SortOrder.UPDATED_ASC -> append("$paramsUpdated&order=asc")
-						SortOrder.NEWEST -> append("created_at&order=desc")
-						SortOrder.NEWEST_ASC -> append("created_at&order=asc")
-						SortOrder.ALPHABETICAL -> append("title&order=asc")
-						SortOrder.ALPHABETICAL_DESC -> append("title&order=desc")
-						else -> append("latest&order=desc")
-					}
-
-					append("&series_type=Comic&perPage=20")
-					append("&tags_ids=")
-					append("[".urlEncoded())
-					append(filter.tags.joinToString(",") { it.key })
-					append("]".urlEncoded())
-
-				}
-
-				null -> append("&status=All&orderBy=$paramsUpdated&order=desc&series_type=Comic&perPage=20")
+			filter.query?.let {
+				append(filter.query.urlEncoded())
 			}
+
+			append("&series_type=Comic&perPage=$pageSize")
+
+			filter.states.oneOrThrowIfMany()?.let {
+				append("&status=")
+				append(
+					when (it) {
+						MangaState.ONGOING -> "Ongoing"
+						MangaState.FINISHED -> "Completed"
+						MangaState.ABANDONED -> "Dropped"
+						MangaState.PAUSED -> "Hiatus"
+						else -> ""
+					},
+				)
+			}
+
+			append("&orderBy=")
+			when (order) {
+				SortOrder.POPULARITY -> append("total_views&order=desc")
+				SortOrder.POPULARITY_ASC -> append("total_views&order=asc")
+				SortOrder.UPDATED -> append("$paramsUpdated&order=desc")
+				SortOrder.UPDATED_ASC -> append("$paramsUpdated&order=asc")
+				SortOrder.NEWEST -> append("created_at&order=desc")
+				SortOrder.NEWEST_ASC -> append("created_at&order=asc")
+				SortOrder.ALPHABETICAL -> append("title&order=asc")
+				SortOrder.ALPHABETICAL_DESC -> append("title&order=desc")
+				else -> append("latest&order=desc")
+			}
+			append("&tags_ids=")
+			append("[".urlEncoded())
+			append(filter.tags.joinToString(",") { it.key })
+			append("]".urlEncoded())
+
 			append("&page=")
 			append(page.toString())
 		}
+
+
 		return parseMangaList(webClient.httpGet(url).parseJson())
 	}
 
@@ -184,12 +188,18 @@ internal abstract class HeanCms(
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/comics").parseHtml()
-		val regex = Regex("\"tags\\\\.*?(\\[.+?])")
-		val tags = doc.select("script").firstNotNullOf { script ->
-			regex.find(script.html())?.groupValues?.getOrNull(1)
-		}.unescapeJson()
+		val regex = Regex("\"tags\\\\?\":\\s*\\[(.+?)]\\s*[},]")
+		val tags = doc.select("script").joinToString("") { it.html() }
+			.let { fullHtml ->
+				regex.find(fullHtml)?.groupValues?.getOrNull(1)
+			}
+			?.unescapeJson()
+			?.replace(Regex(""""]\)\s*self\.__next_f\.push\(\[\d+,""""), "")
+			?.let { "[$it]" }
+			?: return emptySet()
+
 		return JSONArray(tags).mapJSON {
 			MangaTag(
 				key = it.getInt("id").toString(),
@@ -198,4 +208,5 @@ internal abstract class HeanCms(
 			)
 		}.toSet()
 	}
+
 }

@@ -5,7 +5,7 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.ErrorMessages
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
+import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
@@ -16,7 +16,7 @@ import java.util.*
 
 @MangaSourceParser("FURYOSOCIETY", "FuryoSociety", "fr")
 internal class FuryoSociety(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.FURYOSOCIETY, 0) {
+	SinglePageMangaParser(context, MangaParserSource.FURYOSOCIETY) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.ALPHABETICAL, SortOrder.UPDATED)
 
@@ -24,12 +24,15 @@ internal class FuryoSociety(context: MangaLoaderContext) :
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
 
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities()
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions()
+
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
 	}
-
-	override val isSearchSupported = false
 
 	override suspend fun getFavicons(): Favicons {
 		return Favicons(
@@ -40,27 +43,20 @@ internal class FuryoSociety(context: MangaLoaderContext) :
 		)
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
-		if (page > 1) {
-			return emptyList()
-		}
-
+	override suspend fun getList(order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
-			when (filter) {
-				is MangaListFilter.Search -> {
+			when {
+				!filter.query.isNullOrEmpty() -> {
 					throw IllegalArgumentException(ErrorMessages.SEARCH_NOT_SUPPORTED)
 				}
 
-				is MangaListFilter.Advanced -> {
-
-					if (filter.sortOrder == SortOrder.ALPHABETICAL) {
+				else -> {
+					if (order == SortOrder.ALPHABETICAL) {
 						append("/mangas")
 					}
 				}
-
-				null -> {}
 			}
 		}
 
@@ -86,31 +82,26 @@ internal class FuryoSociety(context: MangaLoaderContext) :
 		}
 	}
 
-
-	override suspend fun getAvailableTags(): Set<MangaTag> = emptySet()
-
-
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		val chaptersDeferred = getChapters(doc)
 		manga.copy(
-			description = doc.selectFirstOrThrow("div.fs-comic-description").html(),
+			description = doc.selectFirst("div.fs-comic-description")?.html().orEmpty(),
 			chapters = chaptersDeferred,
 			isNsfw = doc.selectFirst(".adult-text") != null,
 		)
 	}
-
 
 	private fun getChapters(doc: Document): List<MangaChapter> {
 		return doc.body().select("div.list.fs-chapter-list div.element").mapChapters(reversed = true) { i, div ->
 			val a = div.selectFirstOrThrow("div.title a")
 			val href = a.attrAsRelativeUrl("href")
 			val dateFormat = SimpleDateFormat("dd/MM/yyyy", sourceLocale)
-			val dateText = div.selectFirstOrThrow("div.meta_r").text().replace("Hier", "1 jour")
+			val dateText = div.selectFirst("div.meta_r")?.text()?.replace("Hier", "1 jour")
 			MangaChapter(
 				id = generateUid(href),
-				name = div.selectFirstOrThrow("div.title").text() + " : " + div.selectFirstOrThrow("div.name").text(),
+				name = div.selectFirst("div.title")?.text() + " : " + div.selectFirst("div.name")?.text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,
@@ -142,13 +133,16 @@ internal class FuryoSociety(context: MangaLoaderContext) :
 	private fun parseChapterDate(dateFormat: DateFormat, date: String?): Long {
 		val d = date?.lowercase() ?: return 0
 		return when {
-			d.startsWith("il y a") || // Handle translated 'ago' in French.
-				d.endsWith(" an") || d.endsWith(" ans") ||
-				d.endsWith(" mois") ||
-				d.endsWith(" jour") || d.endsWith(" jours") ||
-				d.endsWith(" heure") || d.endsWith(" heures") ||
-				d.endsWith(" seconde") || d.endsWith(" secondes") ||
-				d.endsWith(" minute") || d.endsWith(" minutes") -> parseRelativeDate(date)
+
+			WordSet("il y a").startsWith(d) -> {
+				parseRelativeDate(d)
+			}
+
+			WordSet(
+				" an", " mois", " jour", " jours", " heure", " heures", " minute", " minutes", " seconde", " secondes",
+			).endsWith(d) -> {
+				parseRelativeDate(d)
+			}
 
 			else -> dateFormat.tryParse(date)
 		}

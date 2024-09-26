@@ -30,10 +30,6 @@ internal abstract class MangaboxParser(
 		SortOrder.ALPHABETICAL,
 	)
 
-	override val availableStates: Set<MangaState> = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
-
-	override val isTagsExclusionSupported = true
-
 	protected open val listUrl = "/advanced_search"
 	protected open val searchUrl = "/search/story/"
 	protected open val datePattern = "MMM dd,yy"
@@ -43,7 +39,6 @@ internal abstract class MangaboxParser(
 		paginator.firstPage = 1
 		searchPaginator.firstPage = 1
 	}
-
 
 	@JvmField
 	protected val ongoing: Set<String> = setOf(
@@ -55,20 +50,32 @@ internal abstract class MangaboxParser(
 		"completed",
 	)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isTagsExclusionSupported = true,
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
 			append(listUrl)
 			append("/?s=all")
-			when (filter) {
+			when {
 
-				is MangaListFilter.Search -> {
+				!filter.query.isNullOrEmpty() -> {
 					append("&keyw=")
 					append(filter.query.replace(" ", "_").urlEncoded())
 				}
 
-				is MangaListFilter.Advanced -> {
+				else -> {
 
 					if (filter.tags.isNotEmpty()) {
 						append("&g_i=")
@@ -100,7 +107,7 @@ internal abstract class MangaboxParser(
 					}
 
 					append("&orby=")
-					when (filter.sortOrder) {
+					when (order) {
 						SortOrder.POPULARITY -> append("topview")
 						SortOrder.UPDATED -> append("")
 						SortOrder.NEWEST -> append("newest")
@@ -108,8 +115,6 @@ internal abstract class MangaboxParser(
 						else -> append("")
 					}
 				}
-
-				null -> {}
 			}
 
 			append("&page=")
@@ -141,7 +146,7 @@ internal abstract class MangaboxParser(
 
 	protected open val selectTagMap = "div.panel-genres-list a:not(.genres-select)"
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	protected open suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/$listUrl").parseHtml()
 		val tags = doc.select(selectTagMap).drop(1) // remove all tags
 		return tags.mapNotNullToSet { a ->
@@ -258,30 +263,20 @@ internal abstract class MangaboxParser(
 	}
 
 	protected fun parseChapterDate(dateFormat: DateFormat, date: String?): Long {
-		// Clean date (e.g. 5th December 2019 to 5 December 2019) before parsing it
 		val d = date?.lowercase() ?: return 0
 		return when {
-			d.endsWith(" ago") ||
-				// short Hours
-				d.endsWith(" h") ||
-				// short Day
-				d.endsWith(" d") -> parseRelativeDate(date)
+			WordSet(" ago", " h", " d").endsWith(d) -> {
+				parseRelativeDate(d)
+			}
 
-			// Handle 'yesterday' and 'today', using midnight
-			d.startsWith("year") -> Calendar.getInstance().apply {
-				add(Calendar.DAY_OF_MONTH, -1) // yesterday
-				set(Calendar.HOUR_OF_DAY, 0)
-				set(Calendar.MINUTE, 0)
-				set(Calendar.SECOND, 0)
-				set(Calendar.MILLISECOND, 0)
-			}.timeInMillis
-
-			d.startsWith("today") -> Calendar.getInstance().apply {
-				set(Calendar.HOUR_OF_DAY, 0)
-				set(Calendar.MINUTE, 0)
-				set(Calendar.SECOND, 0)
-				set(Calendar.MILLISECOND, 0)
-			}.timeInMillis
+			WordSet("today").startsWith(d) -> {
+				Calendar.getInstance().apply {
+					set(Calendar.HOUR_OF_DAY, 0)
+					set(Calendar.MINUTE, 0)
+					set(Calendar.SECOND, 0)
+					set(Calendar.MILLISECOND, 0)
+				}.timeInMillis
+			}
 
 			date.contains(Regex("""\d(st|nd|rd|th)""")) -> date.split(" ").map {
 				if (it.contains(Regex("""\d\D\D"""))) {
@@ -295,45 +290,28 @@ internal abstract class MangaboxParser(
 		}
 	}
 
-	// Parses dates in this form:
-	// 21 hours ago
 	private fun parseRelativeDate(date: String): Long {
 		val number = Regex("""(\d+)""").find(date)?.value?.toIntOrNull() ?: return 0
 		val cal = Calendar.getInstance()
-
 		return when {
-			WordSet(
-				"day",
-				"days",
-			).anyWordIn(date) -> cal.apply { add(Calendar.DAY_OF_MONTH, -number) }.timeInMillis
+			WordSet("second")
+				.anyWordIn(date) -> cal.apply { add(Calendar.SECOND, -number) }.timeInMillis
 
-			WordSet("hour", "hours", "h").anyWordIn(date) -> cal.apply {
-				add(
-					Calendar.HOUR,
-					-number,
-				)
-			}.timeInMillis
+			WordSet("min", "minute", "minutes")
+				.anyWordIn(date) -> cal.apply { add(Calendar.MINUTE, -number) }.timeInMillis
 
-			WordSet(
-				"min",
-				"minute",
-				"minutes",
-			).anyWordIn(date) -> cal.apply {
-				add(
-					Calendar.MINUTE,
-					-number,
-				)
-			}.timeInMillis
+			WordSet("hour", "hours", "h")
+				.anyWordIn(date) -> cal.apply { add(Calendar.HOUR, -number) }.timeInMillis
 
-			WordSet("second").anyWordIn(date) -> cal.apply {
-				add(
-					Calendar.SECOND,
-					-number,
-				)
-			}.timeInMillis
+			WordSet("day", "days")
+				.anyWordIn(date) -> cal.apply { add(Calendar.DAY_OF_MONTH, -number) }.timeInMillis
 
-			WordSet("month", "months").anyWordIn(date) -> cal.apply { add(Calendar.MONTH, -number) }.timeInMillis
-			WordSet("year").anyWordIn(date) -> cal.apply { add(Calendar.YEAR, -number) }.timeInMillis
+			WordSet("month", "months")
+				.anyWordIn(date) -> cal.apply { add(Calendar.MONTH, -number) }.timeInMillis
+
+			WordSet("year")
+				.anyWordIn(date) -> cal.apply { add(Calendar.YEAR, -number) }.timeInMillis
+
 			else -> 0
 		}
 	}

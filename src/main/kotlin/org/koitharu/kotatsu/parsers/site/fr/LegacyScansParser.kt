@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.parsers.site.fr
 
+import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
@@ -15,11 +16,6 @@ import java.util.*
 internal class LegacyScansParser(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.LEGACY_SCANS, 18) {
 
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.POPULARITY)
-
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.ABANDONED, MangaState.PAUSED)
-
 	override val configKeyDomain = ConfigKey.Domain("legacy-scans.com")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -27,12 +23,31 @@ internal class LegacyScansParser(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.POPULARITY, SortOrder.UPDATED)
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.ABANDONED, MangaState.PAUSED),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.MANHWA,
+			ContentType.MANHUA,
+			ContentType.ONE_SHOT,
+		),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val end = page * pageSize
 		val start = end - (pageSize - 1)
 
-		when (filter) {
-			is MangaListFilter.Search -> {
+		when {
+			!filter.query.isNullOrEmpty() -> {
 				if (page > 1) {
 					return emptyList()
 				}
@@ -43,49 +58,75 @@ internal class LegacyScansParser(context: MangaLoaderContext) :
 				return parseMangaListQuery(webClient.httpGet(url).parseJson())
 			}
 
-			is MangaListFilter.Advanced -> {
-				val url = buildString {
-					append("https://api.")
-					append(domain)
-					append("/misc/comic/search/query?status=")
-					filter.states.oneOrThrowIfMany()?.let {
-						append(
-							when (it) {
-								MangaState.ONGOING -> "En cours"
-								MangaState.FINISHED -> "Terminé"
-								MangaState.ABANDONED -> "Abandonné"
-								MangaState.PAUSED -> "En pause"
-								else -> ""
-							},
-						)
-					}
-					append("&order=&genreNames=")
-					append(filter.tags.joinToString(",") { it.key })
-					append("&type=&start=")
-					append(start)
-					append("&end=")
-					append(end)
-				}
-				return parseMangaList(webClient.httpGet(url).parseJson())
-			}
+			else -> {
 
-			null -> {
-				val url = buildString {
-					append("https://api.")
-					append(domain)
-					append("/misc/comic/search/query?status=&order=&genreNames=&type=&start=")
-					append(start)
-					append("&end=")
-					append(end)
+				if (order == SortOrder.UPDATED) {
+
+					if (filter.states.isNotEmpty() || filter.tags.isNotEmpty() || filter.types.isNotEmpty()) {
+						throw IllegalArgumentException("La recherche part mis à jour + des filtres n'est pas supporté par cette source.")
+					}
+
+					val url = buildString {
+						append("https://api.")
+						append(domain)
+						append("/misc/comic/home/updates?start=")
+						append(start.toString())
+						append("&end=")
+						append(end.toString())
+					}
+
+					return parseMangaList(webClient.httpGet(url).parseJson().getJSONArray("results"))
+
+				} else {
+					val url = buildString {
+						append("https://api.")
+						append(domain)
+						append("/misc/comic/search/query?status=")
+						filter.states.oneOrThrowIfMany()?.let {
+							append(
+								when (it) {
+									MangaState.ONGOING -> "En cours"
+									MangaState.FINISHED -> "Terminé"
+									MangaState.ABANDONED -> "Abandonné"
+									MangaState.PAUSED -> "En pause"
+									else -> ""
+								},
+							)
+						}
+
+						append("&order=&genreNames=")
+						append(filter.tags.joinToString(",") { it.key })
+
+						append("&type=")
+						filter.types.forEach {
+							append(
+								when (it) {
+									ContentType.MANGA -> "Manga"
+									ContentType.MANHWA -> "Manhwa"
+									ContentType.MANHUA -> "Manhua"
+									ContentType.ONE_SHOT -> "One shot"
+									else -> ""
+								},
+							)
+						}
+
+						append("&start=")
+						append(start.toString())
+						append("&end=")
+						append(end.toString())
+					}
+
+					return parseMangaList(webClient.httpGet(url).parseJson().getJSONArray("comics"))
 				}
-				return parseMangaList(webClient.httpGet(url).parseJson())
+
+
 			}
 		}
 	}
 
 
-	private fun parseMangaList(json: JSONObject): List<Manga> {
-		return json.getJSONArray("comics").mapJSON { j ->
+	private fun parseMangaList(json: JSONArray): List<Manga> {
+		return json.mapJSON { j ->
 			val slug = j.getString("slug")
 			val urlManga = "https://$domain/comics/$slug"
 			Manga(
@@ -138,17 +179,17 @@ internal class LegacyScansParser(context: MangaLoaderContext) :
 					source = source,
 				)
 			},
-			coverUrl = root.selectFirstOrThrow("div.serieImg img").attr("src"),
+			coverUrl = root.selectFirst("div.serieImg img")?.attr("src").orEmpty(),
 			author = root.select("div.serieAdd p:contains(Auteur:) strong").text(),
 			description = root.selectFirst("div.serieDescription div")?.html(),
 			chapters = root.select("div.chapterList a")
 				.mapChapters(reversed = true) { i, a ->
 					val href = a.attrAsRelativeUrl("href")
-					val name = a.selectFirstOrThrow("span").text()
+					val name = a.selectFirst("span")?.text()
 					val dateText = a.selectLast("span")?.text() ?: "0"
 					MangaChapter(
 						id = generateUid(href),
-						name = name,
+						name = name ?: "Chapitre : ${i + 1f}",
 						number = i + 1f,
 						volume = 0,
 						url = href,
@@ -175,7 +216,7 @@ internal class LegacyScansParser(context: MangaLoaderContext) :
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/comics").parseHtml()
 		val script = doc.requireElementById("__NUXT_DATA__").data()
 			.substringAfterLast("\"genres\"").substringBeforeLast("\"comics\"")

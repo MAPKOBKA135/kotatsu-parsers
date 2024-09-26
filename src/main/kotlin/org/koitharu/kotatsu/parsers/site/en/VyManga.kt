@@ -11,7 +11,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("VYMANGA", "VyManga", "en")
-class VyManga(context: MangaLoaderContext) :
+internal class VyManga(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.VYMANGA, pageSize = 36) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("vymanga.net")
@@ -20,8 +20,6 @@ class VyManga(context: MangaLoaderContext) :
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
 	}
-
-	override val isMultipleTagsSupported = false
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.POPULARITY,
@@ -34,77 +32,71 @@ class VyManga(context: MangaLoaderContext) :
 		SortOrder.UPDATED_ASC,
 	)
 
-	override val availableStates: Set<MangaState> = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+			isMultipleTagsSupported = true,
+			isTagsExclusionSupported = true,
+		)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
+	)
 
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
-			when (filter) {
-				is MangaListFilter.Search -> {
-					append("/search?search_po=0&q=")
-					append(filter.query.urlEncoded())
-					append("&author_po=0&author=&completed=2&sort=updated_at&sort_type=desc&page=")
-					append(page)
-				}
+			append("/search?search_po=0&q=")
 
-				is MangaListFilter.Advanced -> {
-
-					if (filter.tags.isEmpty()) {
-
-						append("/search?search_po=0&q=&author_po=0&author=&completed=")
-						filter.states.oneOrThrowIfMany()?.let {
-							append(
-								when (it) {
-									MangaState.ONGOING -> "0"
-									MangaState.FINISHED -> "1"
-									else -> "2"
-								},
-							)
-						}
-
-					} else {
-
-						append("/genre/")
-						filter.tags.oneOrThrowIfMany()?.let {
-							append(it.key)
-						}
-
-						append("?status=")
-						filter.states.oneOrThrowIfMany()?.let {
-							append(
-								when (it) {
-									MangaState.ONGOING -> "0"
-									MangaState.FINISHED -> "1"
-									else -> ""
-								},
-							)
-						}
-					}
-
-					append("&sort=")
-					when (filter.sortOrder) {
-						SortOrder.POPULARITY -> append("viewed&sort_type=desc")
-						SortOrder.POPULARITY_ASC -> append("viewed&sort_type=asc")
-						SortOrder.RATING -> append("scored&sort_type=desc")
-						SortOrder.RATING_ASC -> append("scored&sort_type=asc")
-						SortOrder.NEWEST -> append("created_at&sort_type=desc")
-						SortOrder.NEWEST_ASC -> append("created_at&sort_type=asc")
-						SortOrder.UPDATED -> append("updated_at&sort_type=desc")
-						SortOrder.UPDATED_ASC -> append("updated_at&sort_type=asc")
-						else -> append("Updated")
-					}
-
-					append("&page=")
-					append(page)
-				}
-
-				null -> {
-					append("/search?search_po=0&q=&author_po=0&author=&completed=2&sort=updated_at&sort_type=desc&page=")
-					append(page)
-				}
+			filter.query?.let {
+				append(filter.query.urlEncoded())
 			}
+
+			append("&author_po=0&author=")
+
+			// filter.author?.let {
+			// 	append(filter.author.urlEncoded())
+			// }
+
+			append("&completed=")
+			filter.states.oneOrThrowIfMany()?.let {
+				append(
+					when (it) {
+						MangaState.ONGOING -> "0"
+						MangaState.FINISHED -> "1"
+						else -> ""
+					},
+				)
+			}
+
+			append("&sort=")
+			when (order) {
+				SortOrder.POPULARITY -> append("viewed&sort_type=desc")
+				SortOrder.POPULARITY_ASC -> append("viewed&sort_type=asc")
+				SortOrder.RATING -> append("scored&sort_type=desc")
+				SortOrder.RATING_ASC -> append("scored&sort_type=asc")
+				SortOrder.NEWEST -> append("created_at&sort_type=desc")
+				SortOrder.NEWEST_ASC -> append("created_at&sort_type=asc")
+				SortOrder.UPDATED -> append("updated_at&sort_type=desc")
+				SortOrder.UPDATED_ASC -> append("updated_at&sort_type=asc")
+				else -> append("updated_at&sort_type=desc")
+			}
+
+			filter.tags.forEach { tag ->
+				append("&genre[]=")
+				append(tag.key)
+			}
+
+			filter.tagsExclude.forEach { tagsExclude ->
+				append("&exclude_genre[]=")
+				append(tagsExclude.key)
+			}
+
+			append("&page=")
+			append(page.toString())
 		}
 		val doc = webClient.httpGet(url).parseHtml()
 		return doc.select(".comic-item").map { div ->
@@ -126,12 +118,12 @@ class VyManga(context: MangaLoaderContext) :
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
-		val doc = webClient.httpGet("https://$domain/").parseHtml()
-		return doc.select("div.dropdown-menu.custom-menu ul li a[href*=genre]").mapNotNullToSet {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
+		val doc = webClient.httpGet("https://$domain/search").parseHtml()
+		return doc.select("#advance-search .check-genre .d-flex").mapNotNullToSet {
 			MangaTag(
-				key = it.attr("href").substringAfterLast('/'),
-				title = it.text(),
+				key = it.selectFirstOrThrow(".checkbox-genre").attr("data-value"),
+				title = it.selectFirstOrThrow("label").text(),
 				source = source,
 			)
 		}

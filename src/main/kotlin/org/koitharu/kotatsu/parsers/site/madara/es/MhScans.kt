@@ -7,7 +7,7 @@ import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
 
 @MangaSourceParser("MHSCANS", "MhScans", "es")
 internal class MhScans(context: MangaLoaderContext) :
-	MadaraParser(context, MangaParserSource.MHSCANS, "mhscans.manhuaonline.org") {
+	MadaraParser(context, MangaParserSource.MHSCANS, "mh.cookni.net") {
 	override val datePattern = "d 'de' MMMMM 'de' yyyy"
 	override val listUrl = "series/"
 }

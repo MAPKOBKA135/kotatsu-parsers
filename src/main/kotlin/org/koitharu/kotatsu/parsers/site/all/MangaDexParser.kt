@@ -22,28 +22,78 @@ private const val CHAPTERS_MAX_PAGE_SIZE = 500
 private const val CHAPTERS_PARALLELISM = 3
 private const val CHAPTERS_MAX_COUNT = 10_000 // strange api behavior, looks like a bug
 private const val LOCALE_FALLBACK = "en"
+private const val SERVER_DATA = "data"
+private const val SERVER_DATA_SAVER = "data-saver"
 
 @MangaSourceParser("MANGADEX", "MangaDex")
 internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context, MangaParserSource.MANGADEX) {
 
 	override val configKeyDomain = ConfigKey.Domain("mangadex.org")
 
+	private val preferredServerKey = ConfigKey.PreferredImageServer(
+		presetValues = mapOf(
+			SERVER_DATA to "Original quality",
+			SERVER_DATA_SAVER to "Compressed quality",
+		),
+		defaultValue = SERVER_DATA,
+	)
+
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
+		keys.add(preferredServerKey)
 	}
 
-	override val availableSortOrders: EnumSet<SortOrder> = EnumSet.allOf(SortOrder::class.java)
+	override val availableSortOrders: EnumSet<SortOrder> = EnumSet.of(
+		SortOrder.UPDATED,
+		SortOrder.UPDATED_ASC,
+		SortOrder.POPULARITY,
+		SortOrder.POPULARITY_ASC,
+		SortOrder.RATING,
+		SortOrder.RATING_ASC,
+		SortOrder.NEWEST,
+		SortOrder.NEWEST_ASC,
+		SortOrder.ALPHABETICAL,
+		SortOrder.ALPHABETICAL_DESC,
+		SortOrder.ADDED,
+		SortOrder.ADDED_ASC,
+		SortOrder.RELEVANCE,
+	)
 
-	override val availableContentRating: Set<ContentRating> = EnumSet.allOf(ContentRating::class.java)
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isTagsExclusionSupported = true,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+			isYearSupported = true,
+			isOriginalLocaleSupported = true,
+		)
 
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED)
+	override suspend fun getFilterOptions(): MangaListFilterOptions = coroutineScope {
+		val localesDeferred = async { fetchAvailableLocales() }
+		val tagsDeferred = async { fetchAvailableTags() }
+		MangaListFilterOptions(
+			availableTags = tagsDeferred.await(),
+			availableStates = EnumSet.of(
+				MangaState.ONGOING,
+				MangaState.FINISHED,
+				MangaState.PAUSED,
+				MangaState.ABANDONED,
+			),
+			availableContentRating = EnumSet.allOf(ContentRating::class.java),
+			availableDemographics = EnumSet.of(
+				Demographic.SHOUNEN,
+				Demographic.SHOUJO,
+				Demographic.SEINEN,
+				Demographic.JOSEI,
+				Demographic.NONE,
+			),
+			availableLocales = localesDeferred.await(),
+		)
+	}
 
-	override val isTagsExclusionSupported: Boolean = true
-
-
-	override suspend fun getList(offset: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val domain = domain
 		val url = buildString {
 			append("https://api.")
@@ -53,68 +103,99 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 			append("&offset=")
 			append(offset)
 			append("&includes[]=cover_art&includes[]=author&includes[]=artist")
-			when (filter) {
-				is MangaListFilter.Search -> {
-					append("&title=")
-					append(filter.query)
-					append("&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic")
-				}
 
-				is MangaListFilter.Advanced -> {
-					filter.tags.forEach {
-						append("&includedTags[]=")
-						append(it.key)
-					}
+			filter.query?.let {
+				append("&title=")
+				append(filter.query.urlEncoded())
+			}
 
-					filter.tagsExclude.forEach {
-						append("&excludedTags[]=")
-						append(it.key)
-					}
+			filter.tags.forEach {
+				append("&includedTags[]=")
+				append(it.key)
+			}
 
-					if (filter.contentRating.isNotEmpty()) {
-						filter.contentRating.forEach {
-							when (it) {
-								ContentRating.SAFE -> append("&contentRating[]=safe")
-								ContentRating.SUGGESTIVE -> append("&contentRating[]=suggestive&contentRating[]=erotica")
-								ContentRating.ADULT -> append("&contentRating[]=pornographic")
-							}
-						}
-					}
+			filter.tagsExclude.forEach {
+				append("&excludedTags[]=")
+				append(it.key)
+			}
 
-					append("&order")
-					append(
-						when (filter.sortOrder) {
-							SortOrder.UPDATED -> "[latestUploadedChapter]=desc"
-							SortOrder.UPDATED_ASC -> "[latestUploadedChapter]=asc"
-							SortOrder.RATING -> "[rating]=desc"
-							SortOrder.RATING_ASC -> "[rating]=asc"
-							SortOrder.ALPHABETICAL -> "[title]=asc"
-							SortOrder.ALPHABETICAL_DESC -> "[title]=desc"
-							SortOrder.NEWEST -> "[createdAt]=desc"
-							SortOrder.NEWEST_ASC -> "[createdAt]=asc"
-							SortOrder.POPULARITY -> "[followedCount]=desc"
-							SortOrder.POPULARITY_ASC -> "[followedCount]=asc"
-						},
-					)
-					filter.states.forEach {
-						append("&status[]=")
-						when (it) {
-							MangaState.ONGOING -> append("ongoing")
-							MangaState.FINISHED -> append("completed")
-							MangaState.ABANDONED -> append("cancelled")
-							MangaState.PAUSED -> append("hiatus")
-							else -> append("")
-						}
-					}
-					filter.locale?.let {
-						append("&availableTranslatedLanguage[]=")
-						append(it.language)
+			if (filter.contentRating.isNotEmpty()) {
+				filter.contentRating.forEach {
+					when (it) {
+						ContentRating.SAFE -> append("&contentRating[]=safe")
+						ContentRating.SUGGESTIVE -> append("&contentRating[]=suggestive&contentRating[]=erotica")
+						ContentRating.ADULT -> append("&contentRating[]=pornographic")
+
 					}
 				}
+			} else append("&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic")
 
-				null -> {
-					append("&order[latestUploadedChapter]=desc")
+			append("&order")
+			append(
+				when (order) {
+					SortOrder.UPDATED -> "[latestUploadedChapter]=desc"
+					SortOrder.UPDATED_ASC -> "[latestUploadedChapter]=asc"
+					SortOrder.RATING -> "[rating]=desc"
+					SortOrder.RATING_ASC -> "[rating]=asc"
+					SortOrder.ALPHABETICAL -> "[title]=asc"
+					SortOrder.ALPHABETICAL_DESC -> "[title]=desc"
+					SortOrder.NEWEST -> "[year]=desc"
+					SortOrder.NEWEST_ASC -> "[year]=asc"
+					SortOrder.POPULARITY -> "[followedCount]=desc"
+					SortOrder.POPULARITY_ASC -> "[followedCount]=asc"
+					SortOrder.ADDED -> "[createdAt]=desc"
+					SortOrder.ADDED_ASC -> "[createdAt]=asc"
+					SortOrder.RELEVANCE -> "&order[relevance]=desc"
+					else -> "[latestUploadedChapter]=desc"
+				},
+			)
+
+			filter.states.forEach {
+				append("&status[]=")
+				when (it) {
+					MangaState.ONGOING -> append("ongoing")
+					MangaState.FINISHED -> append("completed")
+					MangaState.ABANDONED -> append("cancelled")
+					MangaState.PAUSED -> append("hiatus")
+					else -> append("")
 				}
+			}
+
+			filter.demographics.forEach {
+				append("&publicationDemographic[]=")
+				append(
+					when (it) {
+						Demographic.SHOUNEN -> "shounen"
+						Demographic.SHOUJO -> "shoujo"
+						Demographic.SEINEN -> "seinen"
+						Demographic.JOSEI -> "josei"
+						Demographic.NONE -> "none"
+						else -> ""
+					},
+				)
+			}
+
+			filter.locale?.let {
+				append("&availableTranslatedLanguage[]=")
+				if (it.language == "in") {
+					append("id")
+				} else {
+					append(it.language)
+				}
+			}
+
+			filter.originalLocale?.let {
+				append("&originalLanguage[]=")
+				if (it.language == "in") {
+					append("id")
+				} else {
+					append(it.language)
+				}
+			}
+
+			if (filter.year != 0) {
+				append("&year=")
+				append(filter.year)
 			}
 		}
 		val json = webClient.httpGet(url).parseJson().getJSONArray("data")
@@ -188,12 +269,15 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val domain = domain
-		val chapterJson = webClient.httpGet("https://api.$domain/at-home/server/${chapter.url}?forcePort443=false")
-			.parseJson()
-			.getJSONObject("chapter")
-		val pages = chapterJson.getJSONArray("data")
-		val prefix = "https://uploads.$domain/data/${chapterJson.getString("hash")}/"
+		val json = webClient.httpGet(
+			"https://api.$domain/at-home/server/${chapter.url}?forcePort443=false",
+		).parseJson()
+		val chapterJson = json.getJSONObject("chapter")
+		val server = config[preferredServerKey] ?: SERVER_DATA
+		val pages = chapterJson.getJSONArray(
+			if (server == SERVER_DATA_SAVER) "dataSaver" else "data",
+		)
+		val prefix = "${json.getString("baseUrl")}/$server/${chapterJson.getString("hash")}/"
 		return List(pages.length()) { i ->
 			val url = prefix + pages.getString(i)
 			MangaPage(
@@ -205,7 +289,7 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val tags = webClient.httpGet("https://api.${domain}/manga/tag").parseJson()
 			.getJSONArray("data")
 		return tags.mapJSONToSet { jo ->
@@ -219,7 +303,7 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 		}
 	}
 
-	override suspend fun getAvailableLocales(): Set<Locale> {
+	private suspend fun fetchAvailableLocales(): Set<Locale> {
 		val head = webClient.httpGet("https://$domain/").parseHtml().head()
 		return head.getElementsByAttributeValue("property", "og:locale:alternate")
 			.mapNotNullToSet { meta ->

@@ -9,53 +9,56 @@ import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-abstract class MangaWorldParser(
+internal abstract class MangaWorldParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 16,
 ) : PagedMangaParser(context, source, pageSize) {
-	override val availableSortOrders: Set<SortOrder> =
-		EnumSet.of(
-			SortOrder.POPULARITY,
-			SortOrder.ALPHABETICAL,
-			SortOrder.NEWEST,
-			SortOrder.ALPHABETICAL_DESC,
-			SortOrder.UPDATED,
-		)
+
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.POPULARITY,
+		SortOrder.ALPHABETICAL,
+		SortOrder.NEWEST,
+		SortOrder.ALPHABETICAL_DESC,
+		SortOrder.UPDATED,
+	)
 
 	override val defaultSortOrder: SortOrder
 		get() = SortOrder.ALPHABETICAL
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.ABANDONED, MangaState.PAUSED),
+	)
+
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
 	}
 
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.ABANDONED, MangaState.PAUSED)
-
-	override val isMultipleTagsSupported = true
-
-	override suspend fun getListPage(
-		page: Int,
-		filter: MangaListFilter?,
-	): List<Manga> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url =
 			buildString {
 				append("https://")
 				append(domain)
 				append("/archive?")
-				when (filter) {
-					is MangaListFilter.Search -> {
+				when {
+					!filter.query.isNullOrEmpty() -> {
 						append("keyword=")
 						append(filter.query.urlEncoded())
 					}
 
-					is MangaListFilter.Advanced -> {
-						if (filter.tags.isEmpty() && filter.states.isEmpty() && filter.sortOrder == SortOrder.UPDATED) return parseMangaList(
+					else -> {
+						if (filter.tags.isEmpty() && filter.states.isEmpty() && order == SortOrder.UPDATED) return parseMangaList(
 							webClient.httpGet("https://$domain/?page=$page").parseHtml(),
 						)
 
@@ -63,7 +66,7 @@ abstract class MangaWorldParser(
 							filter.tags.joinTo(this, "&") { it.key.substringAfter("archive?") }
 						}
 
-						when (filter.sortOrder) {
+						when (order) {
 							SortOrder.POPULARITY -> append("&sort=most_read")
 							SortOrder.ALPHABETICAL -> append("&sort=a-z")
 							SortOrder.NEWEST -> append("&sort=newest")
@@ -78,8 +81,6 @@ abstract class MangaWorldParser(
 							else -> Unit
 						}
 					}
-
-					null -> Unit
 				}
 				append("&page=$page")
 			}
@@ -117,7 +118,7 @@ abstract class MangaWorldParser(
 	}
 
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/").parseHtml()
 		val genres = doc.select("div[aria-labelledby=genresDropdown] a").mapNotNullToSet {
 			MangaTag(

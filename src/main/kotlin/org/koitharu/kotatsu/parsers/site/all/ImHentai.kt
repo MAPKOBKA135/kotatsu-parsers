@@ -22,29 +22,72 @@ internal class ImHentai(context: MangaLoaderContext) :
 
 	override val configKeyDomain = ConfigKey.Domain("imhentai.xxx")
 
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableLocales = setOf(
+			Locale.ENGLISH, Locale.JAPANESE, Locale("es"), Locale.FRENCH, Locale("kr"), Locale.GERMAN, Locale("ru"),
+		),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.DOUJINSHI,
+			ContentType.COMICS,
+			ContentType.IMAGE_SET,
+			ContentType.ARTIST_CG,
+			ContentType.GAME_CG,
+		),
+	)
+
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getListPage(
+		page: Int,
+		order: SortOrder,
+		filter: MangaListFilter,
+	): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
 			append("/search/?page=")
 			append(page.toString())
-			when (filter) {
-				is MangaListFilter.Search -> {
+			when {
+				!filter.query.isNullOrEmpty() -> {
 					append("&key=")
 					append(filter.query.urlEncoded())
 				}
 
-				is MangaListFilter.Advanced -> {
+				else -> {
 
 					if (filter.tags.isNotEmpty()) {
 						append("&key=")
 						append(filter.tags.joinToString(separator = ",") { it.key })
 					}
+
+					var types = "&m=1&d=1&w=1&i=1&a=1&g=1"
+					if (filter.types.isNotEmpty()) {
+						types = "&m=0&d=0&w=0&i=0&a=0&g=0"
+						filter.types.forEach {
+							when (it) {
+								ContentType.MANGA -> types = types.replace("&m=0", "&m=1")
+								ContentType.DOUJINSHI -> types = types.replace("&d=0", "&d=1")
+								ContentType.COMICS -> types = types.replace("&w=0", "&w=1")
+								ContentType.IMAGE_SET -> types = types.replace("&i=0", "&i=1")
+								ContentType.ARTIST_CG -> types = types.replace("&a=0", "&a=1")
+								ContentType.GAME_CG -> types = types.replace("&g=0", "&g=1")
+								else -> {}
+							}
+						}
+					}
+					append(types)
+
 
 					var lang = "&en=1&jp=1&es=1&fr=1&kr=1&de=1&ru=1"
 					filter.locale?.let {
@@ -53,16 +96,12 @@ internal class ImHentai(context: MangaLoaderContext) :
 					}
 					append(lang)
 
-					when (filter.sortOrder) {
+					when (order) {
 						SortOrder.UPDATED -> append("&lt=1&pp=0")
 						SortOrder.POPULARITY -> append("&lt=0&pp=1")
 						SortOrder.RATING -> append("&lt=0&pp=0")
 						else -> append("&lt=1&pp=0")
 					}
-				}
-
-				null -> {
-					append("&lt=1&pp=0")
 				}
 			}
 
@@ -90,7 +129,7 @@ internal class ImHentai(context: MangaLoaderContext) :
 
 	//Tags are deliberately reduced because there are too many and this slows down the application.
 	//only the most popular ones are taken.
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		return coroutineScope {
 			(1..3).map { page ->
 				async { getTags(page) }
@@ -112,10 +151,6 @@ internal class ImHentai(context: MangaLoaderContext) :
 			source = source,
 		)
 	}
-
-	override suspend fun getAvailableLocales(): Set<Locale> = setOf(
-		Locale.ENGLISH, Locale.JAPANESE, Locale("es"), Locale.FRENCH, Locale("kr"), Locale.GERMAN, Locale("ru"),
-	)
 
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)

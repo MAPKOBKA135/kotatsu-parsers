@@ -37,75 +37,75 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED)
-
-	override val isTagsExclusionSupported: Boolean = true
-
 	init {
 		paginator.firstPage = 0
 		searchPaginator.firstPage = 0
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isTagsExclusionSupported = true,
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = urlBuilder()
 			.host(domain)
 			.addPathSegment("manga_list")
 			.addQueryParameter("limit", page.toString())
-		when (filter) {
-			is MangaListFilter.Search -> {
-				url.addQueryParameter("search", filter.query)
-			}
 
-			is MangaListFilter.Advanced -> {
+		filter.query?.let {
+			url.addQueryParameter("search", filter.query)
+		}
 
-				when (filter.sortOrder) {
-					SortOrder.UPDATED -> url.addQueryParameter("order_by", "update")
-						.addQueryParameter("order", "desc")
+		when (order) {
+			SortOrder.UPDATED -> url.addQueryParameter("order_by", "update")
+				.addQueryParameter("order", "desc")
 
-					SortOrder.POPULARITY -> url.addQueryParameter("order_by", "views")
-						.addQueryParameter("order", "desc")
+			SortOrder.POPULARITY -> url.addQueryParameter("order_by", "views")
+				.addQueryParameter("order", "desc")
 
-					SortOrder.RATING -> url.addQueryParameter("order_by", "top")
-						.addQueryParameter("order", "desc")
+			SortOrder.RATING -> url.addQueryParameter("order_by", "top")
+				.addQueryParameter("order", "desc")
 
-					SortOrder.NEWEST -> url.addQueryParameter("order_by", "create")
-						.addQueryParameter("order", "desc")
+			SortOrder.NEWEST -> url.addQueryParameter("order_by", "create")
+				.addQueryParameter("order", "desc")
 
-					SortOrder.ALPHABETICAL -> url.addQueryParameter("order_by", "name")
-						.addQueryParameter("order", "asc")
+			SortOrder.ALPHABETICAL -> url.addQueryParameter("order_by", "name")
+				.addQueryParameter("order", "asc")
 
-					SortOrder.ALPHABETICAL_DESC -> url.addQueryParameter("order_by", "name")
-						.addQueryParameter("order", "desc")
+			SortOrder.ALPHABETICAL_DESC -> url.addQueryParameter("order_by", "name")
+				.addQueryParameter("order", "desc")
 
-					else -> url.addQueryParameter("order_by", "update")
-						.addQueryParameter("order", "desc")
-				}
+			else -> url.addQueryParameter("order_by", "update")
+				.addQueryParameter("order", "desc")
+		}
 
-				if (filter.tags.isNotEmpty()) {
-					url.addQueryParameter("withCategories", filter.tags.joinToString(",") { it.key })
-				}
+		if (filter.tags.isNotEmpty()) {
+			url.addQueryParameter("withCategories", filter.tags.joinToString(",") { it.key })
+		}
 
-				if (filter.tagsExclude.isNotEmpty()) {
-					url.addQueryParameter("withoutCategories", filter.tagsExclude.joinToString(",") { it.key })
-				}
+		if (filter.tagsExclude.isNotEmpty()) {
+			url.addQueryParameter("withoutCategories", filter.tagsExclude.joinToString(",") { it.key })
+		}
 
-				filter.states.oneOrThrowIfMany()?.let {
-					url.addQueryParameter(
-						"state",
-						when (it) {
-							MangaState.ONGOING -> "1"
-							MangaState.FINISHED -> "2"
-							MangaState.PAUSED -> "3"
-							MangaState.ABANDONED -> "5"
-							else -> "1"
-						},
-					)
-				}
-
-			}
-
-			null -> url.addQueryParameter("order_by", "update")
+		filter.states.oneOrThrowIfMany()?.let {
+			url.addQueryParameter(
+				"state",
+				when (it) {
+					MangaState.ONGOING -> "1"
+					MangaState.FINISHED -> "2"
+					MangaState.PAUSED -> "3"
+					MangaState.ABANDONED -> "5"
+					else -> "1"
+				},
+			)
 		}
 		val root = webClient.httpGet(url.build()).parseHtml().requireElementById("mangas_content")
 		return root.select(".manga[data-manga]").map { div ->
@@ -113,7 +113,7 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 			val href = header.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 			Manga(
 				id = generateUid(href),
-				title = div.selectFirstOrThrow("h1").text(),
+				title = div.selectFirst("h1")?.text().orEmpty(),
 				altTitle = null,
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
@@ -124,7 +124,7 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 					?.div(10f)
 					?: RATING_UNKNOWN,
 				isNsfw = div.selectFirst(".badge-adult_content") != null,
-				coverUrl = div.selectFirstOrThrow("img").src().assertNotNull("src").orEmpty(),
+				coverUrl = div.selectFirst("img")?.src().assertNotNull("src").orEmpty(),
 				tags = div.selectFirst(".component-manga-categories")
 					.assertNotNull("tags")
 					?.select("a")
@@ -208,7 +208,7 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val root = webClient.httpGet(urlBuilder().addPathSegment("manga_list").build())
 			.parseHtml()
 			.requireElementById("search_options-form")

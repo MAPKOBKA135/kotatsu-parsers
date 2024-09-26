@@ -28,46 +28,70 @@ internal abstract class IkenParser(
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.POPULARITY)
 
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.ABANDONED, MangaState.UPCOMING)
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+			isMultipleTagsSupported = true,
+		)
 
-	override val isMultipleTagsSupported = true
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(
+			MangaState.ONGOING,
+			MangaState.FINISHED,
+			MangaState.ABANDONED,
+			MangaState.UPCOMING,
+		),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.MANHUA,
+			ContentType.MANHWA,
+			ContentType.OTHER,
+		),
+	)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
 			append("/api/query?page=")
 			append(page)
 			append("&perPage=18&searchTerm=")
-			when (filter) {
 
-				is MangaListFilter.Search -> {
-					append(filter.query.urlEncoded())
-				}
+			filter.query?.let {
+				append(filter.query.urlEncoded())
+			}
 
-				is MangaListFilter.Advanced -> {
+			if (filter.tags.isNotEmpty()) {
+				append("&genreIds=")
+				filter.tags.joinTo(this, ",") { it.key }
+			}
 
-					if (filter.tags.isNotEmpty()) {
-						append("&genreIds=")
-						appendAll(filter.tags, ",") { it.key }
-					}
+			append("&seriesType=")
+			filter.types.oneOrThrowIfMany()?.let {
+				append(
+					when (it) {
+						ContentType.MANGA -> "MANGA"
+						ContentType.MANHWA -> "MANHWA"
+						ContentType.MANHUA -> "MANHUA"
+						ContentType.OTHER -> "RUSSIAN"
+						else -> ""
+					},
+				)
+			}
 
-					append("&seriesType=&seriesStatus=")
-					filter.states.oneOrThrowIfMany()?.let {
-						append(
-							when (it) {
-								MangaState.ONGOING -> "ONGOING"
-								MangaState.FINISHED -> "COMPLETED"
-								MangaState.UPCOMING -> "COMING_SOON"
-								MangaState.ABANDONED -> "DROPPED"
-								else -> ""
-							},
-						)
-					}
-				}
-
-				null -> {}
+			append("&seriesStatus=")
+			filter.states.oneOrThrowIfMany()?.let {
+				append(
+					when (it) {
+						MangaState.ONGOING -> "ONGOING"
+						MangaState.FINISHED -> "COMPLETED"
+						MangaState.UPCOMING -> "COMING_SOON"
+						MangaState.ABANDONED -> "DROPPED"
+						else -> ""
+					},
+				)
 			}
 		}
 		return parseMangaList(webClient.httpGet(url).parseJson())
@@ -145,7 +169,7 @@ internal abstract class IkenParser(
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	protected open suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/series").parseHtml()
 		return doc.selectLastOrThrow("select").select("option[value]").mapNotNullToSet {
 			val key = it.attr("value") ?: return@mapNotNullToSet null

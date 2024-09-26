@@ -25,8 +25,6 @@ internal abstract class AnimeBootstrapParser(
 		keys.add(userAgentKey)
 	}
 
-	override val isMultipleTagsSupported = false
-
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.UPDATED,
 		SortOrder.POPULARITY,
@@ -37,13 +35,27 @@ internal abstract class AnimeBootstrapParser(
 	protected open val listUrl = "/manga"
 	protected open val datePattern = "dd MMM. yyyy"
 
-
 	init {
 		paginator.firstPage = 1
 		searchPaginator.firstPage = 1
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.MANHWA,
+			ContentType.MANHUA,
+		),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
@@ -52,32 +64,37 @@ internal abstract class AnimeBootstrapParser(
 			append(page.toString())
 			append("&type=all")
 
-			when (filter) {
-				is MangaListFilter.Search -> {
-					append("&search=")
-					append(filter.query.urlEncoded())
-				}
-
-				is MangaListFilter.Advanced -> {
-
-					filter.tags.oneOrThrowIfMany()?.let {
-						append("&categorie=")
-						append(it.key)
-					}
-
-					append("&sort=")
-					when (filter.sortOrder) {
-						SortOrder.POPULARITY -> append("view")
-						SortOrder.UPDATED -> append("updated")
-						SortOrder.ALPHABETICAL -> append("default")
-						SortOrder.NEWEST -> append("published")
-						else -> append("updated")
-					}
-
-				}
-
-				null -> append("&sort=updated")
+			filter.query?.let {
+				append("&search=")
+				append(filter.query.urlEncoded())
 			}
+
+			filter.tags.oneOrThrowIfMany()?.let {
+				append("&categorie=")
+				append(it.key)
+			}
+
+			filter.types.oneOrThrowIfMany()?.let {
+				append("&type=")
+				append(
+					when (it) {
+						ContentType.MANGA -> "manga"
+						ContentType.MANHWA -> "manhwa"
+						ContentType.MANHUA -> "manhua"
+						else -> "all"
+					},
+				)
+			}
+
+			append("&sort=")
+			when (order) {
+				SortOrder.POPULARITY -> append("view")
+				SortOrder.UPDATED -> append("updated")
+				SortOrder.ALPHABETICAL -> append("default")
+				SortOrder.NEWEST -> append("published")
+				else -> append("updated")
+			}
+
 		}
 		val doc = webClient.httpGet(url).parseHtml()
 
@@ -100,7 +117,7 @@ internal abstract class AnimeBootstrapParser(
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	protected open suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain$listUrl").parseHtml()
 		return doc.select("div.product__page__filter div:contains(Genre:) option ").mapNotNullToSet { option ->
 			val key = option.attr("value") ?: return@mapNotNullToSet null

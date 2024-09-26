@@ -5,8 +5,9 @@ package org.koitharu.kotatsu.parsers.util
 import java.text.DecimalFormat
 import java.text.NumberFormat
 import java.util.*
+import kotlin.math.absoluteValue
 
-fun Number.format(decimals: Int = 0, decPoint: Char = '.', thousandsSep: Char? = ' '): String {
+public fun Number.format(decimals: Int = 0, decPoint: Char = '.', thousandsSep: Char? = ' '): String {
 	val formatter = NumberFormat.getInstance(Locale.US) as DecimalFormat
 	val symbols = formatter.decimalFormatSymbols
 	if (thousandsSep != null) {
@@ -22,22 +23,22 @@ fun Number.format(decimals: Int = 0, decPoint: Char = '.', thousandsSep: Char? =
 	return when (this) {
 		is Float,
 		is Double,
-		-> formatter.format(this.toDouble())
+			-> formatter.format(this.toDouble())
 
 		else -> formatter.format(this.toLong())
 	}
 }
 
-fun Float.toIntUp(): Int {
+public fun Float.toIntUp(): Int {
 	val intValue = toInt()
-	return if (this == intValue.toFloat()) {
+	return if ((this - intValue.toFloat()).absoluteValue <= 0.00001) {
 		intValue
 	} else {
 		intValue + 1
 	}
 }
 
-infix fun Int.upBy(step: Int): Int {
+public infix fun Int.upBy(step: Int): Int {
 	val mod = this % step
 	return if (mod == 0) {
 		this
@@ -46,11 +47,17 @@ infix fun Int.upBy(step: Int): Int {
 	}
 }
 
-fun Number.formatSimple(): String {
+public fun Number.formatSimple(): String {
 	val raw = toString()
 	return if (raw.endsWith(".0") || raw.endsWith(",0")) {
 		raw.dropLast(2)
 	} else {
 		raw
 	}
+}
+
+public inline fun Int.ifZero(defaultVale: () -> Int): Int = if (this == 0) {
+	defaultVale()
+} else {
+	this
 }

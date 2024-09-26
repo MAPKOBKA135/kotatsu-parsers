@@ -38,19 +38,13 @@ internal abstract class WpComicsParser(
 		SortOrder.RATING,
 	)
 
-	override val availableStates: Set<MangaState> = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
-
-	override val isMultipleTagsSupported = false
-
 	protected open val listUrl = "/tim-truyen"
 	protected open val datePattern = "dd/MM/yy"
-
 
 	init {
 		paginator.firstPage = 1
 		searchPaginator.firstPage = 1
 	}
-
 
 	@JvmField
 	protected val ongoing: Set<String> = setOf(
@@ -68,10 +62,20 @@ internal abstract class WpComicsParser(
 		"完結済み",
 	)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val response =
-			when (filter) {
-				is MangaListFilter.Search -> {
+			when {
+				!filter.query.isNullOrEmpty() -> {
 					val url = buildString {
 						append("https://")
 						append(domain)
@@ -90,7 +94,7 @@ internal abstract class WpComicsParser(
 					result.getOrThrow()
 				}
 
-				is MangaListFilter.Advanced -> {
+				else -> {
 					val url = buildString {
 						append("https://")
 						append(domain)
@@ -103,12 +107,12 @@ internal abstract class WpComicsParser(
 						}
 						append("?sort=")
 						append(
-							when (filter.sortOrder) {
+							when (order) {
 								SortOrder.UPDATED -> 0
 								SortOrder.POPULARITY -> 10
 								SortOrder.NEWEST -> 15
 								SortOrder.RATING -> 20
-								else -> throw IllegalArgumentException("Sort order ${filter.sortOrder.name} not supported")
+								else -> throw IllegalArgumentException("Sort order ${order.name} not supported")
 							},
 						)
 						filter.states.oneOrThrowIfMany()?.let {
@@ -125,17 +129,6 @@ internal abstract class WpComicsParser(
 						append(page.toString())
 					}
 
-					webClient.httpGet(url)
-				}
-
-				null -> {
-					val url = buildString {
-						append("https://")
-						append(domain)
-						append(listUrl)
-						append("?sort=0&status=-1&page=")
-						append(page.toString())
-					}
 					webClient.httpGet(url)
 				}
 			}
@@ -178,7 +171,7 @@ internal abstract class WpComicsParser(
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val map = getOrCreateTagMap()
 		val tagSet = ArraySet<MangaTag>(map.size)
 		for (entry in map) {
@@ -286,24 +279,19 @@ internal abstract class WpComicsParser(
 	protected fun parseChapterDate(dateFormat: DateFormat, date: String?): Long {
 		val d = date?.lowercase() ?: return 0
 		return when {
-			d.endsWith(" ago") ||
-				d.endsWith(" trước")
-			-> parseRelativeDate(date)
 
-			d.startsWith("year") -> Calendar.getInstance().apply {
-				add(Calendar.DAY_OF_MONTH, -1)
-				set(Calendar.HOUR_OF_DAY, 0)
-				set(Calendar.MINUTE, 0)
-				set(Calendar.SECOND, 0)
-				set(Calendar.MILLISECOND, 0)
-			}.timeInMillis
+			WordSet(" ago", " trước").endsWith(d) -> {
+				parseRelativeDate(d)
+			}
 
-			d.startsWith("today") -> Calendar.getInstance().apply {
-				set(Calendar.HOUR_OF_DAY, 0)
-				set(Calendar.MINUTE, 0)
-				set(Calendar.SECOND, 0)
-				set(Calendar.MILLISECOND, 0)
-			}.timeInMillis
+			WordSet("today").startsWith(d) -> {
+				Calendar.getInstance().apply {
+					set(Calendar.HOUR_OF_DAY, 0)
+					set(Calendar.MINUTE, 0)
+					set(Calendar.SECOND, 0)
+					set(Calendar.MILLISECOND, 0)
+				}.timeInMillis
+			}
 
 			date.contains(Regex("""\d(st|nd|rd|th)""")) -> date.split(" ").map {
 				if (it.contains(Regex("""\d\D\D"""))) {
@@ -321,27 +309,20 @@ internal abstract class WpComicsParser(
 		val number = Regex("""(\d+)""").find(date)?.value?.toIntOrNull() ?: return 0
 		val cal = Calendar.getInstance()
 		return when {
+			WordSet("second", "giây")
+				.anyWordIn(date) -> cal.apply { add(Calendar.SECOND, -number) }.timeInMillis
 
-			WordSet("second", "giây").anyWordIn(date) -> cal.apply { add(Calendar.SECOND, -number) }.timeInMillis
+			WordSet("min", "minute", "minutes", "mins", "phút")
+				.anyWordIn(date) -> cal.apply { add(Calendar.MINUTE, -number) }.timeInMillis
 
-			WordSet("min", "minute", "minutes", "mins", "phút").anyWordIn(date) -> cal.apply {
-				add(Calendar.MINUTE, -number)
-			}.timeInMillis
+			WordSet("jam", "saat", "heure", "hora", "horas", "hour", "hours", "h", "giờ")
+				.anyWordIn(date) -> cal.apply { add(Calendar.HOUR, -number) }.timeInMillis
 
-			WordSet("jam", "saat", "heure", "hora", "horas", "hour", "hours", "h", "giờ").anyWordIn(date) -> cal.apply {
-				add(Calendar.HOUR, -number)
-			}.timeInMillis
+			WordSet("day", "days", "d", "ngày")
+				.anyWordIn(date) -> cal.apply { add(Calendar.DAY_OF_MONTH, -number) }.timeInMillis
 
-			WordSet("day", "days", "d", "ngày").anyWordIn(date) -> cal.apply {
-				add(Calendar.DAY_OF_MONTH, -number)
-			}.timeInMillis
-
-			WordSet("month", "months", "tháng").anyWordIn(date) -> cal.apply {
-				add(
-					Calendar.MONTH,
-					-number,
-				)
-			}.timeInMillis
+			WordSet("month", "months", "tháng")
+				.anyWordIn(date) -> cal.apply { add(Calendar.MONTH, -number) }.timeInMillis
 
 			WordSet("year", "năm").anyWordIn(date) -> cal.apply { add(Calendar.YEAR, -number) }.timeInMillis
 			else -> 0

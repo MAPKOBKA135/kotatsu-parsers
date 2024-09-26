@@ -28,26 +28,32 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 		SortOrder.UPDATED,
 	)
 
-	override val availableStates: Set<MangaState> = EnumSet.of(
-		MangaState.ONGOING,
-		MangaState.FINISHED,
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(
+			MangaState.ONGOING,
+			MangaState.FINISHED,
+		),
 	)
 
-	override val isMultipleTagsSupported = false
-
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
-			when (filter) {
-				is MangaListFilter.Search -> {
+			when {
+				!filter.query.isNullOrEmpty() -> {
 					append("/search?name=")
 					append(filter.query.urlEncoded())
 					append("&page=")
 					append(page.toString())
 				}
 
-				is MangaListFilter.Advanced -> {
+				else -> {
 					append("/directory/")
 					append("0-")
 
@@ -79,7 +85,7 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 					append(".htm")
 
 					append(
-						when (filter.sortOrder) {
+						when (order) {
 							SortOrder.POPULARITY -> ""
 							SortOrder.UPDATED -> "?last_chapter_time.za"
 							SortOrder.ALPHABETICAL -> "?name.az"
@@ -88,8 +94,6 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 						},
 					)
 				}
-
-				null -> append("/directory/$page.htm?last_chapter_time.za")
 			}
 		}
 		val doc = webClient.httpGet(url).parseHtml()
@@ -222,7 +226,7 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 		return doc.requireElementById("image").attrAsAbsoluteUrl("src")
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("/directory/".toAbsoluteUrl(domain)).parseHtml()
 		val root = doc.body().selectFirst("aside.right")
 			?.getElementsContainingOwnText("Genres")

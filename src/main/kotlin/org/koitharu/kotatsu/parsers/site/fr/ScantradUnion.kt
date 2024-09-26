@@ -15,13 +15,6 @@ import java.util.*
 internal class ScantradUnion(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.SCANTRADUNION, 10) {
 
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-		SortOrder.ALPHABETICAL,
-		SortOrder.UPDATED,
-	)
-
-	override val isMultipleTagsSupported = false
-
 	override val configKeyDomain = ConfigKey.Domain("scantrad-union.com")
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
@@ -31,19 +24,33 @@ internal class ScantradUnion(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.ALPHABETICAL,
+		SortOrder.UPDATED,
+	)
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
-			when (filter) {
-				is MangaListFilter.Search -> {
+			when {
+				!filter.query.isNullOrEmpty() -> {
 					append("/page/")
 					append(page.toString())
 					append("/?s=")
 					append(filter.query.urlEncoded())
 				}
 
-				is MangaListFilter.Advanced -> {
+				else -> {
 					if (filter.tags.isNotEmpty()) {
 						filter.tags.oneOrThrowIfMany()?.let {
 							append("/tag/")
@@ -53,24 +60,18 @@ internal class ScantradUnion(context: MangaLoaderContext) :
 							append("/")
 						}
 					} else {
-						if (filter.sortOrder == SortOrder.ALPHABETICAL) {
+						if (order == SortOrder.ALPHABETICAL) {
 							append("/manga/page/")
 							append(page.toString())
 							append("/")
 						}
 
-						if (filter.sortOrder == SortOrder.UPDATED && page > 1) {
+						if (order == SortOrder.UPDATED && page > 1) {
 							return emptyList()
 						}
 
 					}
 
-				}
-
-				null -> {
-					append("/manga/page/")
-					append(page.toString())
-					append("/")
 				}
 			}
 		}
@@ -88,7 +89,7 @@ internal class ScantradUnion(context: MangaLoaderContext) :
 						publicUrl = href.toAbsoluteUrl(domain),
 						rating = RATING_UNKNOWN,
 						isNsfw = false,
-						coverUrl = article.selectFirstOrThrow("img.attachment-thumbnail").attrAsAbsoluteUrl("src"),
+						coverUrl = article.selectFirst("img.attachment-thumbnail")?.attrAsAbsoluteUrl("src").orEmpty(),
 						tags = setOf(),
 						state = null,
 						author = null,
@@ -108,7 +109,7 @@ internal class ScantradUnion(context: MangaLoaderContext) :
 						publicUrl = href.toAbsoluteUrl(domain),
 						rating = RATING_UNKNOWN,
 						isNsfw = false,
-						coverUrl = article.selectFirstOrThrow("img").attrAsAbsoluteUrl("src"),
+						coverUrl = article.selectFirst("img")?.attrAsAbsoluteUrl("src").orEmpty(),
 						tags = setOf(),
 						state = null,
 						author = null,
@@ -150,7 +151,7 @@ internal class ScantradUnion(context: MangaLoaderContext) :
 					} else {
 						"Chapter $i"
 					}
-					val date = li.select(".name-chapter").first()!!.children().elementAt(2).text()
+					val date = li.select(".name-chapter").first()?.children()?.elementAt(2)?.text()
 					MangaChapter(
 						id = generateUid(href),
 						name = name,
@@ -183,7 +184,7 @@ internal class ScantradUnion(context: MangaLoaderContext) :
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/").parseHtml()
 		val body = doc.body()
 		val list = body.select(".asp_gochosen")[1].select("option").orEmpty()

@@ -7,4 +7,4 @@ import org.koitharu.kotatsu.parsers.site.zeistmanga.ZeistMangaParser
 
 @MangaSourceParser("ICHIROMANGA", "IchiroManga", "id")
 internal class IchiroManga(context: MangaLoaderContext) :
-	ZeistMangaParser(context, MangaParserSource.ICHIROMANGA, "www.ichiromanga.my.id")
+	ZeistMangaParser(context, MangaParserSource.ICHIROMANGA, "ichiromanga.my.id")

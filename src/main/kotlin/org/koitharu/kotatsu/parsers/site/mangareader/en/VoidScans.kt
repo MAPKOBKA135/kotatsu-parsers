@@ -7,7 +7,4 @@ import org.koitharu.kotatsu.parsers.site.mangareader.MangaReaderParser
 
 @MangaSourceParser("VOIDSCANS", "HiveToon", "en")
 internal class VoidScans(context: MangaLoaderContext) :
-	MangaReaderParser(context, MangaParserSource.VOIDSCANS, "hivetoon.com", pageSize = 150, searchPageSize = 150) {
-	override val datePattern = "MMM d, yyyy"
-	override val isTagsExclusionSupported = false
-}
+	MangaReaderParser(context, MangaParserSource.VOIDSCANS, "hivetoon.net", pageSize = 15, searchPageSize = 10)

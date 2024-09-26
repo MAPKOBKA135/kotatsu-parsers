@@ -17,7 +17,7 @@ import org.koitharu.kotatsu.parsers.model.*
  * @see [MangaPage.id]
  */
 @InternalParsersApi
-fun MangaParser.generateUid(url: String): Long {
+public fun MangaParser.generateUid(url: String): Long {
 	var h = 1125899906842597L
 	source.name.forEach { c ->
 		h = 31 * h + c.code
@@ -36,7 +36,7 @@ fun MangaParser.generateUid(url: String): Long {
  * @see [MangaPage.id]
  */
 @InternalParsersApi
-fun MangaParser.generateUid(id: Long): Long {
+public fun MangaParser.generateUid(id: Long): Long {
 	var h = 1125899906842597L
 	source.name.forEach { c ->
 		h = 31 * h + c.code
@@ -46,48 +46,54 @@ fun MangaParser.generateUid(id: Long): Long {
 }
 
 @InternalParsersApi
-fun Element.parseFailed(message: String? = null): Nothing {
+public fun Element.parseFailed(message: String? = null): Nothing {
 	throw ParseException(message, ownerDocument()?.location() ?: baseUri(), null)
 }
 
 @InternalParsersApi
-fun Set<MangaTag>?.oneOrThrowIfMany(): MangaTag? {
-	return when {
-		isNullOrEmpty() -> null
-		size == 1 -> first()
-		else -> throw IllegalArgumentException(ErrorMessages.FILTER_MULTIPLE_GENRES_NOT_SUPPORTED)
-	}
-}
+public fun Set<MangaTag>?.oneOrThrowIfMany(): MangaTag? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_GENRES_NOT_SUPPORTED,
+)
 
 @InternalParsersApi
-fun Set<MangaState>?.oneOrThrowIfMany(): MangaState? {
-	return when {
-		isNullOrEmpty() -> null
-		size == 1 -> first()
-		else -> throw IllegalArgumentException(ErrorMessages.FILTER_MULTIPLE_STATES_NOT_SUPPORTED)
-	}
-}
+public fun Set<MangaState>?.oneOrThrowIfMany(): MangaState? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_STATES_NOT_SUPPORTED,
+)
 
 @InternalParsersApi
-fun Set<ContentRating>?.oneOrThrowIfMany(): ContentRating? {
-	return when {
-		isNullOrEmpty() -> null
-		size == 1 -> first()
-		else -> throw IllegalArgumentException(ErrorMessages.FILTER_MULTIPLE_CONTENT_RATING_NOT_SUPPORTED)
-	}
+public fun Set<ContentType>?.oneOrThrowIfMany(): ContentType? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_CONTENT_TYPES_NOT_SUPPORTED,
+)
+
+@InternalParsersApi
+public fun Set<Demographic>?.oneOrThrowIfMany(): Demographic? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_DEMOGRAPHICS_NOT_SUPPORTED,
+)
+
+@InternalParsersApi
+public fun Set<ContentRating>?.oneOrThrowIfMany(): ContentRating? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_CONTENT_RATING_NOT_SUPPORTED,
+)
+
+private fun <T> Set<T>?.oneOrThrowIfMany(msg: String): T? = when {
+	isNullOrEmpty() -> null
+	size == 1 -> first()
+	else -> throw IllegalArgumentException(msg)
 }
 
-val MangaParser.domain: String
+public val MangaParser.domain: String
 	get() {
 		return config[configKeyDomain]
 	}
 
-fun MangaParser.getDomain(subdomain: String): String {
+@InternalParsersApi
+public fun MangaParser.getDomain(subdomain: String): String {
 	val domain = domain
 	return subdomain + "." + domain.removePrefix("www.")
 }
 
-fun MangaParser.urlBuilder(subdomain: String? = null): HttpUrl.Builder {
+@InternalParsersApi
+public fun MangaParser.urlBuilder(subdomain: String? = null): HttpUrl.Builder {
 	return HttpUrl.Builder()
 		.scheme("https")
 		.host(if (subdomain == null) domain else "$subdomain.$domain")

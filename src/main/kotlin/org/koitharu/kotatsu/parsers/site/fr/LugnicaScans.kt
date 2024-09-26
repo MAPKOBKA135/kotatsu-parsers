@@ -18,24 +18,28 @@ import java.util.*
 internal class LugnicaScans(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.LUGNICASCANS, 10) {
 
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-		SortOrder.ALPHABETICAL,
-		SortOrder.UPDATED,
-	)
-
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED)
-
-	override val isSearchSupported = false
-
 	override val configKeyDomain = ConfigKey.Domain("lugnica-scans.com")
-
-	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
 	}
+
+	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
+
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.ALPHABETICAL,
+		SortOrder.UPDATED,
+	)
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED),
+	)
 
 	init {
 		context.cookieJar.insertCookies(
@@ -53,15 +57,15 @@ internal class LugnicaScans(context: MangaLoaderContext) :
 		)
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
-		when (filter) {
-			is MangaListFilter.Search -> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		when {
+			!filter.query.isNullOrEmpty() -> {
 				throw IllegalArgumentException(ErrorMessages.SEARCH_NOT_SUPPORTED)
 			}
 
-			is MangaListFilter.Advanced -> {
+			else -> {
 
-				if (filter.sortOrder == SortOrder.ALPHABETICAL) {
+				if (order == SortOrder.ALPHABETICAL) {
 					if (page > 1) {
 						return emptyList()
 					}
@@ -91,16 +95,6 @@ internal class LugnicaScans(context: MangaLoaderContext) :
 					}
 					return parseMangaList(webClient.httpGet(url).parseJsonArray())
 				}
-			}
-
-			null -> {
-				val url = buildString {
-					append("https://")
-					append(domain)
-					append("/api/get/homegrid/")
-					append(page)
-				}
-				return parseMangaList(webClient.httpGet(url).parseJsonArray())
 			}
 		}
 	}
@@ -220,7 +214,4 @@ internal class LugnicaScans(context: MangaLoaderContext) :
 		}
 		return pages
 	}
-
-	override suspend fun getAvailableTags(): Set<MangaTag> = emptySet()
-
 }

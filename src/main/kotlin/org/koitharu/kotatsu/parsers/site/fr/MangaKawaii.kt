@@ -14,9 +14,6 @@ import java.util.*
 @MangaSourceParser("MANGAKAWAII", "MangaKawaii Fr", "fr")
 internal class MangaKawaii(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MANGAKAWAII, 50) {
 
-	override val availableSortOrders: Set<SortOrder> =
-		EnumSet.of(SortOrder.UPDATED, SortOrder.ALPHABETICAL)
-
 	override val configKeyDomain = ConfigKey.Domain("www.mangakawaii.io")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -24,32 +21,41 @@ internal class MangaKawaii(context: MangaLoaderContext) : PagedMangaParser(conte
 		keys.add(userAgentKey)
 	}
 
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
+	override val availableSortOrders: Set<SortOrder> =
+		EnumSet.of(SortOrder.UPDATED, SortOrder.ALPHABETICAL)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+	)
+
 	override fun getRequestHeaders(): Headers = Headers.Builder()
 		.add("Accept-Language", "fr")
 		.build()
 
-	override val isMultipleTagsSupported = false
-
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
-
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
-			when (filter) {
-				is MangaListFilter.Search -> {
+			when {
+				!filter.query.isNullOrEmpty() -> {
 					append("/search?query=")
 					append(filter.query.urlEncoded())
 					append("&search_type=manga&page=")
 					append(page)
 				}
 
-				is MangaListFilter.Advanced -> {
+				else -> {
 
-					if (filter.sortOrder == SortOrder.UPDATED && filter.tags.isNotEmpty()) {
-						throw IllegalArgumentException("Filtrer part tag n'est pas disponible avec le tri pas mis à jour")
+					if (order == SortOrder.UPDATED && filter.tags.isNotEmpty()) {
+						throw IllegalArgumentException("Filtrer par tag n'est pas  avec le tri pas mis à jour")
 					}
 
-					if (filter.sortOrder == SortOrder.ALPHABETICAL) {
+					if (order == SortOrder.ALPHABETICAL) {
 						append("/manga-list")
 						filter.tags.oneOrThrowIfMany()?.let {
 							append("/category/")
@@ -57,12 +63,6 @@ internal class MangaKawaii(context: MangaLoaderContext) : PagedMangaParser(conte
 						}
 					}
 
-					if (page > 1) {
-						return emptyList()
-					}
-				}
-
-				null -> {
 					if (page > 1) {
 						return emptyList()
 					}
@@ -81,7 +81,7 @@ internal class MangaKawaii(context: MangaLoaderContext) : PagedMangaParser(conte
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
 				coverUrl = (div.selectFirst("img")?.src() ?: a.attr("data-bg")).orEmpty(),
-				title = div.selectFirstOrThrow("h4, .media-thumbnail__name").text().orEmpty(),
+				title = div.selectFirst("h4, .media-thumbnail__name")?.text().orEmpty(),
 				altTitle = null,
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
@@ -161,7 +161,7 @@ internal class MangaKawaii(context: MangaLoaderContext) : PagedMangaParser(conte
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/manga-list/").parseHtml()
 		return doc.select("ul li a.category").mapNotNullToSet { a ->
 			val name = a.text()

@@ -27,7 +27,7 @@ import kotlin.math.min
 
 @OptIn(ExperimentalUnsignedTypes::class)
 @MangaSourceParser("HITOMILA", "Hitomi.La", type = ContentType.HENTAI)
-class HitomiLaParser(context: MangaLoaderContext) : MangaParser(context, MangaParserSource.HITOMILA) {
+internal class HitomiLaParser(context: MangaLoaderContext) : MangaParser(context, MangaParserSource.HITOMILA) {
 	override val configKeyDomain = ConfigKey.Domain("hitomi.la")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -70,14 +70,23 @@ class HitomiLaParser(context: MangaLoaderContext) : MangaParser(context, MangaPa
 		Locale.JAPANESE to "japanese",
 	)
 
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableLocales = localeMap.keys,
+	)
+
 	private fun Locale?.getSiteLang(): String = when (this) {
 		null -> "all"
 		else -> localeMap[this] ?: "all"
 	}
 
-	override suspend fun getAvailableLocales(): Set<Locale> = localeMap.keys
-
-	override suspend fun getAvailableTags(): Set<MangaTag> = coroutineScope {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> = coroutineScope {
 		('a'..'z').map { alphabet ->
 			async {
 				val doc = webClient.httpGet("https://$domain/alltags-$alphabet.html").parseHtml()
@@ -109,13 +118,10 @@ class HitomiLaParser(context: MangaLoaderContext) : MangaParser(context, MangaPa
 
 	private var cachedSearchIds: List<Int> = emptyList()
 
-	override suspend fun getList(
-		offset: Int,
-		filter: MangaListFilter?,
-	): List<Manga> = when (filter) {
-		is MangaListFilter.Advanced -> {
+	override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> = when {
+		filter.query.isNullOrEmpty() -> {
 			if (filter.tags.isEmpty()) {
-				when (filter.sortOrder) {
+				when (order) {
 					SortOrder.POPULARITY -> {
 						getGalleryIDsFromNozomi(
 							"popular",
@@ -134,7 +140,7 @@ class HitomiLaParser(context: MangaLoaderContext) : MangaParser(context, MangaPa
 					cachedSearchIds =
 						hitomiSearch(
 							filter.tags.joinToString(" ") { it.key },
-							filter.sortOrder == SortOrder.POPULARITY,
+							order == SortOrder.POPULARITY,
 							filter.locale.getSiteLang(),
 						).toList()
 				}
@@ -142,14 +148,12 @@ class HitomiLaParser(context: MangaLoaderContext) : MangaParser(context, MangaPa
 			}
 		}
 
-		is MangaListFilter.Search -> {
+		else -> {
 			if (offset == 0) {
-				cachedSearchIds = hitomiSearch(filter.query, filter.sortOrder == SortOrder.POPULARITY).toList()
+				cachedSearchIds = hitomiSearch(filter.query, order == SortOrder.POPULARITY).toList()
 			}
 			cachedSearchIds.subList(offset, min(offset + 25, cachedSearchIds.size))
 		}
-
-		else -> getGalleryIDsFromNozomi(null, "popular", "all", offset.nextOffsetRange())
 	}.toMangaList()
 
 	private fun Int.nextOffsetRange(): LongRange {

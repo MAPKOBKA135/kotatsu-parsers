@@ -17,16 +17,6 @@ import java.util.*
 internal class AsuraScansParser(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.ASURASCANS, pageSize = 30) {
 
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-		SortOrder.RATING,
-		SortOrder.UPDATED,
-		SortOrder.NEWEST,
-		SortOrder.ALPHABETICAL_DESC,
-		SortOrder.ALPHABETICAL,
-	)
-
-	override val availableStates: Set<MangaState> = EnumSet.allOf(MangaState::class.java)
-
 	override val configKeyDomain = ConfigKey.Domain("asuracomic.net")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -34,53 +24,81 @@ internal class AsuraScansParser(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
-	override val isMultipleTagsSupported = true
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.RATING,
+		SortOrder.UPDATED,
+		SortOrder.POPULARITY,
+		SortOrder.ALPHABETICAL_DESC,
+		SortOrder.ALPHABETICAL,
+	)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = getOrCreateTagMap().values.toSet(),
+		availableStates = EnumSet.allOf(MangaState::class.java),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.MANHWA,
+			ContentType.MANHUA,
+		),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
 			append("/series?page=")
 			append(page)
 
-			when (filter) {
-				is MangaListFilter.Search -> {
-					append("&name=")
-					append(filter.query.urlEncoded())
-				}
+			filter.query?.let {
+				append("&name=")
+				append(filter.query.urlEncoded())
+			}
 
-				is MangaListFilter.Advanced -> {
+			if (filter.tags.isNotEmpty()) {
+				append("&genres=")
+				append(filter.tags.joinToString(separator = ",") { it.key })
+			}
 
-					if (filter.tags.isNotEmpty()) {
-						append("&genres=")
-						append(filter.tags.joinToString(separator = ",") { it.key })
-					}
+			filter.states.oneOrThrowIfMany()?.let {
+				append("&status=")
+				append(
+					when (it) {
+						MangaState.ONGOING -> "1"
+						MangaState.FINISHED -> "3"
+						MangaState.ABANDONED -> "4"
+						MangaState.PAUSED -> "2"
+						MangaState.UPCOMING -> "6"
+					},
+				)
+			}
 
-					filter.states.oneOrThrowIfMany()?.let {
-						append("&status=")
-						append(
-							when (it) {
-								MangaState.ONGOING -> "1"
-								MangaState.FINISHED -> "3"
-								MangaState.ABANDONED -> "4"
-								MangaState.PAUSED -> "2"
-								MangaState.UPCOMING -> "6"
-							},
-						)
-					}
+			filter.types.oneOrThrowIfMany()?.let {
+				append("&types=")
+				append(
+					when (it) {
+						ContentType.MANGA -> "3"
+						ContentType.MANHWA -> "1"
+						ContentType.MANHUA -> "2"
+						else -> ""
+					},
+				)
+			}
 
-					append("&types=-1&order=")
-					when (filter.sortOrder) {
-						SortOrder.RATING -> append("rating")
-						SortOrder.UPDATED -> append("update")
-						SortOrder.NEWEST -> append("latest")
-						SortOrder.ALPHABETICAL_DESC -> append("desc")
-						SortOrder.ALPHABETICAL -> append("asc")
-						else -> append("update")
-					}
-				}
-
-				null -> append("&genres=&status=-1&order=update&types=-1")
+			append("&order=")
+			when (order) {
+				SortOrder.RATING -> append("rating")
+				SortOrder.UPDATED -> append("update")
+				SortOrder.POPULARITY -> append("bookmarks")
+				SortOrder.ALPHABETICAL_DESC -> append("desc")
+				SortOrder.ALPHABETICAL -> append("asc")
+				else -> append("update")
 			}
 		}
 		val doc = webClient.httpGet(url).parseHtml()
@@ -96,7 +114,7 @@ internal class AsuraScansParser(context: MangaLoaderContext) :
 				rating = a.selectFirst("div.block  label.ml-1")?.text()?.toFloatOrNull()?.div(10f) ?: RATING_UNKNOWN,
 				tags = emptySet(),
 				author = null,
-				state = when (a.selectLastOrThrow("span.status").text()) {
+				state = when (a.selectLast("span.status")?.text().orEmpty()) {
 					"Ongoing" -> MangaState.ONGOING
 					"Completed" -> MangaState.FINISHED
 					"Hiatus" -> MangaState.PAUSED
@@ -112,10 +130,6 @@ internal class AsuraScansParser(context: MangaLoaderContext) :
 
 	private var tagCache: ArrayMap<String, MangaTag>? = null
 	private val mutex = Mutex()
-
-	override suspend fun getAvailableTags(): Set<MangaTag> {
-		return getOrCreateTagMap().values.toSet()
-	}
 
 	private suspend fun getOrCreateTagMap(): Map<String, MangaTag> = mutex.withLock {
 		tagCache?.let { return@withLock it }
@@ -144,16 +158,16 @@ internal class AsuraScansParser(context: MangaLoaderContext) :
 		return manga.copy(
 			description = doc.selectFirst("span.font-medium.text-sm")?.text().orEmpty(),
 			tags = tags,
-			author = doc.selectFirst("div.grid > div:has(h3:eq(0):containsOwn(Author)) > h3:eq(1)")?.text(),
+			author = doc.selectFirst("div.grid > div:has(h3:eq(0):containsOwn(Author)) > h3:eq(1)")?.text().orEmpty(),
 			chapters = doc.select("div.scrollbar-thumb-themecolor > div.group").mapChapters(reversed = true) { i, div ->
 				val a = div.selectLastOrThrow("a")
 				val urlRelative = "/series/" + a.attrAsRelativeUrl("href")
 				val url = urlRelative.toAbsoluteUrl(domain)
-				val date = div.selectFirst("h3:eq(1)")!!.ownText()
+				val date = div.selectLast("h3")?.text().orEmpty()
 				val cleanDate = date.replace(regexDate, "$1")
 				MangaChapter(
 					id = generateUid(url),
-					name = div.selectFirstOrThrow("h3:eq(0)").text(),
+					name = div.selectFirst("h3")?.text() ?: "Chapter : ${i + 1f}",
 					number = i + 1f,
 					volume = 0,
 					url = url,

@@ -1,6 +1,6 @@
 package org.koitharu.kotatsu.parsers.model
 
-enum class SortOrder {
+public enum class SortOrder {
 	UPDATED,
 	UPDATED_ASC,
 	POPULARITY,
@@ -11,4 +11,12 @@ enum class SortOrder {
 	NEWEST_ASC,
 	ALPHABETICAL,
 	ALPHABETICAL_DESC,
+	ADDED,
+	ADDED_ASC,
+	RELEVANCE,
+	POPULARITY_HOUR,
+	POPULARITY_TODAY,
+	POPULARITY_WEEK,
+	POPULARITY_MONTH,
+	POPULARITY_YEAR,
 }

@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.parsers.site.all
 
-import androidx.collection.ArrayMap
 import androidx.collection.ArraySet
 import androidx.collection.SparseArrayCompat
 import androidx.collection.set
@@ -26,6 +25,7 @@ import kotlin.math.pow
 
 private const val DOMAIN_UNAUTHORIZED = "e-hentai.org"
 private const val DOMAIN_AUTHORIZED = "exhentai.org"
+private val TAG_PREFIXES = arrayOf("male:", "female:", "other:")
 
 @MangaSourceParser("EXHENTAI", "ExHentai", type = ContentType.HENTAI)
 internal class ExHentaiParser(
@@ -33,7 +33,6 @@ internal class ExHentaiParser(
 ) : PagedMangaParser(context, MangaParserSource.EXHENTAI, pageSize = 25), MangaParserAuthProvider, Interceptor {
 
 	override val availableSortOrders: Set<SortOrder> = setOf(SortOrder.NEWEST)
-	override val isTagsExclusionSupported: Boolean = true
 
 	override val configKeyDomain: ConfigKey.Domain
 		get() = ConfigKey.Domain(
@@ -49,7 +48,14 @@ internal class ExHentaiParser(
 	private var updateDm = false
 	private val nextPages = SparseArrayCompat<Long>()
 	private val suspiciousContentKey = ConfigKey.ShowSuspiciousContent(false)
-	private val tagsMap = SuspendLazy(::fetchTags)
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isTagsExclusionSupported = true,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
 
 	override val isAuthorized: Boolean
 		get() {
@@ -75,7 +81,37 @@ internal class ExHentaiParser(
 		searchPaginator.firstPage = 0
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = mapTags(),
+		availableContentTypes = EnumSet.of(
+			ContentType.DOUJINSHI,
+			ContentType.MANGA,
+			ContentType.ARTIST_CG,
+			ContentType.GAME_CG,
+			ContentType.COMICS,
+			ContentType.IMAGE_SET,
+			ContentType.OTHER,
+		),
+		availableLocales = setOf(
+			Locale.JAPANESE,
+			Locale.ENGLISH,
+			Locale.CHINESE,
+			Locale("nl"),
+			Locale.FRENCH,
+			Locale.GERMAN,
+			Locale("hu"),
+			Locale.ITALIAN,
+			Locale("kr"),
+			Locale("pl"),
+			Locale("pt"),
+			Locale("ru"),
+			Locale("es"),
+			Locale("th"),
+			Locale("vi"),
+		),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val next = nextPages.get(page, 0L)
 
 		if (page > 0 && next == 0L) {
@@ -83,68 +119,34 @@ internal class ExHentaiParser(
 			return emptyList()
 		}
 
-		var search = ""
+		val url = urlBuilder()
+		url.addEncodedQueryParameter("next", next.toString())
+		url.addQueryParameter("f_search", filter.toSearchQuery())
 
-		val url = buildString {
-			append("https://")
-			append(domain)
-			append("/?next=")
-			append(next)
-			when (filter) {
-
-				is MangaListFilter.Search -> {
-					search += filter.query.urlEncoded()
-					append("&f_search=")
-					append(search.trim().replace(' ', '+'))
-				}
-
-				is MangaListFilter.Advanced -> {
-
-					filter.toSearchQuery()?.let { sq ->
-						append("&f_search=")
-						append(sq.urlEncoded())
-					}
-
-					val catsOn = filter.tags.mapNotNullToSet { it.key.toIntOrNull() }
-					val catsOff = filter.tagsExclude.mapNotNullToSet { it.key.toIntOrNull() }
-					if (catsOff.size >= 10) {
-						return emptyList()
-					}
-					var fCats = catsOn.fold(0, Int::or)
-					if (fCats != 0) {
-						fCats = 1023 - fCats
-					}
-					fCats = catsOff.fold(fCats, Int::or)
-
-					if (fCats != 0) {
-						append("&f_cats=")
-						append(fCats)
-					}
-				}
-
-				null -> {}
-			}
-			// by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
-			if (updateDm) {
-				append("&inline_set=dm_e")
-			}
-			append("&advsearch=1")
-			if (config[suspiciousContentKey]) {
-				append("&f_sh=on")
-			}
+		var fCats = filter.types.toFCats()
+		if (fCats != 0) {
+			url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
 		}
-
-		val body = webClient.httpGet(url).parseHtml().body()
+		if (updateDm) {
+			// by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
+			url.addQueryParameter("inline_set", "dm_e")
+		}
+		url.addQueryParameter("advsearch", "1")
+		if (config[suspiciousContentKey]) {
+			url.addQueryParameter("f_sh", "on")
+		}
+		val body = webClient.httpGet(url.build()).parseHtml().body()
 		val root = body.selectFirst("table.itg")
 			?.selectFirst("tbody")
 			?: if (updateDm) {
 				body.parseFailed("Cannot find root")
 			} else {
 				updateDm = true
-				return getListPage(page, filter)
+				return getListPage(page, order, filter)
 			}
 		updateDm = false
 		nextPages[page + 1] = getNextTimestamp(body)
+
 		return root.children().mapNotNull { tr ->
 			if (tr.childrenSize() != 2) return@mapNotNull null
 			val (td1, td2) = tr.children()
@@ -168,7 +170,7 @@ internal class ExHentaiParser(
 				rating = td2.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
 				isNsfw = true,
 				coverUrl = td1.selectFirst("img")?.absUrl("src").orEmpty(),
-				tags = setOfNotNull(mainTag),
+				tags = setOfNotNull(mainTag) + tagsDiv.parseTags(),
 				state = null,
 				author = tagsDiv.getElementsContainingOwnText("artist:").first()
 					?.nextElementSibling()?.text(),
@@ -187,11 +189,7 @@ internal class ExHentaiParser(
 		val lang = root.getElementById("gd3")
 			?.selectFirst("tr:contains(Language)")
 			?.selectFirst(".gdt2")?.ownTextOrNull()
-
-		val tagMap = tagsMap.get()
-		val tags = ArraySet<MangaTag>()
-		tagList?.selectFirst("tr:contains(female:)")?.select("a")?.mapNotNullTo(tags) { tagMap[it.text()] }
-		tagList?.selectFirst("tr:contains(male:)")?.select("a")?.mapNotNullTo(tags) { tagMap[it.text()] }
+		val tags = tagList?.parseTags().orEmpty()
 
 		return manga.copy(
 			title = title?.getElementById("gn")?.text()?.cleanupTitle() ?: manga.title,
@@ -202,7 +200,7 @@ internal class ExHentaiParser(
 				?.toFloatOrNull()
 				?.div(5f) ?: manga.rating,
 			largeCoverUrl = cover?.styleValueOrNull("background")?.cssUrl(),
-			tags = tags,
+			tags = manga.tags + tags,
 			description = tagList?.select("tr")?.joinToString("<br>") { tr ->
 				val (tc, td) = tr.children()
 				val subTags = td.select("a").joinToString { it.html() }
@@ -267,53 +265,20 @@ internal class ExHentaiParser(
 			"unusual pupils,urination,vore,vtuber,widow,wings,witch,wolf girl,x-ray,yuri,zombie,sole male,males only,yaoi," +
 			"tomgirl,tall man,oni,shotacon,prostate massage,policeman,males only,huge penis,fox boy,feminization,dog boy,dickgirl on male,big penis"
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
-		return tagsMap.get().values.toSet()
-	}
-
-	private suspend fun fetchTags(): Map<String, MangaTag> {
-		val tagMap = ArrayMap<String, MangaTag>()
+	private fun mapTags(): Set<MangaTag> {
 		val tagElements = tags.split(",")
-		for (el in tagElements) {
+		val result = ArraySet<MangaTag>(tagElements.size)
+		for (tag in tagElements) {
+			val el = tag.trim()
 			if (el.isEmpty()) continue
-			tagMap[el] = MangaTag(
+			result += MangaTag(
 				title = el.toTitleCase(Locale.ENGLISH),
 				key = el,
 				source = source,
 			)
 		}
-
-		val doc = webClient.httpGet("https://${domain}").parseHtml()
-		val root = doc.body().requireElementById("searchbox").selectFirstOrThrow("table")
-		root.select("div.cs").forEach { div ->
-			val id = div.id().substringAfterLast('_').toIntOrNull() ?: return@forEach
-			val name = div.text().toTitleCase(Locale.ENGLISH)
-			tagMap[name] = MangaTag(
-				title = "Kind: $name",
-				key = id.toString(),
-				source = source,
-			)
-		}
-		return tagMap
+		return result
 	}
-
-	override suspend fun getAvailableLocales(): Set<Locale> = setOf(
-		Locale.JAPANESE,
-		Locale.ENGLISH,
-		Locale.CHINESE,
-		Locale("nl"),
-		Locale.FRENCH,
-		Locale.GERMAN,
-		Locale("hu"),
-		Locale.ITALIAN,
-		Locale("kr"),
-		Locale("pl"),
-		Locale("pt"),
-		Locale("ru"),
-		Locale("es"),
-		Locale("th"),
-		Locale("vi"),
-	)
 
 	override fun intercept(chain: Interceptor.Chain): Response {
 		val response = chain.proceed(chain.request())
@@ -366,9 +331,9 @@ internal class ExHentaiParser(
 	private fun Element.parseRating(): Float {
 		return runCatching {
 			val style = requireNotNull(attr("style"))
-			val (v1, v2) = ratingPattern.find(style)!!.destructured
-			var p1 = v1.dropLast(2).toInt()
-			val p2 = v2.dropLast(2).toInt()
+			val (v1, v2) = ratingPattern.findAll(style).toList()
+			var p1 = v1.groupValues.first().dropLast(2).toInt()
+			val p2 = v2.groupValues.first().dropLast(2).toInt()
 			if (p2 != -1) {
 				p1 += 8
 			}
@@ -406,6 +371,20 @@ internal class ExHentaiParser(
 		}
 	}
 
+	private fun Element.parseTags(): Set<MangaTag> {
+
+		fun Element.parseTag() = textOrNull()?.let {
+			MangaTag(title = it.toTitleCase(Locale.ENGLISH), key = it, source = source)
+		}
+
+		val result = ArraySet<MangaTag>()
+		for (prefix in TAG_PREFIXES) {
+			getElementsByAttributeValueStarting("id", "ta_$prefix").mapNotNullTo(result, Element::parseTag)
+			getElementsByAttributeValueStarting("title", prefix).mapNotNullTo(result, Element::parseTag)
+		}
+		return result
+	}
+
 	private fun tagIdByClass(classNames: Collection<String>): String? {
 		val className = classNames.find { x -> x.startsWith("ct") } ?: return null
 		val num = className.drop(2).toIntOrNull(16) ?: return null
@@ -420,8 +399,14 @@ internal class ExHentaiParser(
 			?.toLongOrNull() ?: 1
 	}
 
-	private fun MangaListFilter.Advanced.toSearchQuery(): String? {
+	private fun MangaListFilter.toSearchQuery(): String? {
+		if (isEmpty()) {
+			return null
+		}
 		val joiner = StringUtil.StringJoiner(" ")
+		if (!query.isNullOrEmpty()) {
+			joiner.add(query)
+		}
 		for (tag in tags) {
 			if (tag.key.isNumeric()) {
 				continue
@@ -444,5 +429,18 @@ internal class ExHentaiParser(
 			joiner.append("\"$")
 		}
 		return joiner.complete().takeUnless { it.isEmpty() }
+	}
+
+	private fun Collection<ContentType>.toFCats(): Int = fold(0) { acc, ct ->
+		val cat: Int = when (ct) {
+			ContentType.DOUJINSHI -> 2
+			ContentType.MANGA -> 4
+			ContentType.ARTIST_CG -> 8
+			ContentType.GAME_CG -> 16
+			ContentType.COMICS -> 512
+			ContentType.IMAGE_SET -> 32
+			else -> 449 // 1 or 64 or 128 or 256
+		}
+		acc or cat
 	}
 }

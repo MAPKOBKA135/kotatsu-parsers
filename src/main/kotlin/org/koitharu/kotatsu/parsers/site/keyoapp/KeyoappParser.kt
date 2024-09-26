@@ -5,7 +5,7 @@ import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
+import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -17,8 +17,7 @@ internal abstract class KeyoappParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	domain: String,
-	pageSize: Int = 24,
-) : PagedMangaParser(context, source, pageSize) {
+) : SinglePageMangaParser(context, source) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -26,8 +25,6 @@ internal abstract class KeyoappParser(
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
 	}
-
-	override val isMultipleTagsSupported = false
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.UPDATED,
@@ -58,46 +55,36 @@ internal abstract class KeyoappParser(
 		"dropped",
 	)
 
-	init {
-		paginator.firstPage = 1
-		searchPaginator.firstPage = 1
-	}
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+	)
 
+	override suspend fun getList(order: SortOrder, filter: MangaListFilter): List<Manga> {
 		var query = ""
 		var tag = ""
 
-		if (page > 1) {
-			return emptyList()
-		}
-
 		val url = urlBuilder().apply {
 
-			when (filter) {
-				is MangaListFilter.Search -> {
-					addPathSegment("series")
-					query = filter.query
-				}
-
-				is MangaListFilter.Advanced -> {
-
-					if (filter.tags.isNotEmpty()) {
-						filter.tags.oneOrThrowIfMany()?.let {
-							tag = it.title
-						}
-					}
-
-					when (filter.sortOrder) {
-						SortOrder.UPDATED -> addPathSegment("latest")
-						SortOrder.NEWEST -> addPathSegment("series")
-						else -> addPathSegment("latest")
-					}
-
-				}
-
-				null -> addPathSegment("latest")
+			filter.query?.let {
+				query = filter.query
 			}
+
+			filter.tags.oneOrThrowIfMany()?.let {
+				tag = it.title
+			}
+
+			when (order) {
+				SortOrder.UPDATED -> addPathSegment("latest")
+				SortOrder.NEWEST -> addPathSegment("series")
+				else -> addPathSegment("series")
+			}
+
 		}.build()
 
 		return parseMangaList(webClient.httpGet(url).parseHtml(), tag, query)
@@ -172,7 +159,7 @@ internal abstract class KeyoappParser(
 	}
 
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/$listUrl").parseHtml()
 		return doc.requireElementById("series_tags_page").select("button").mapNotNullToSet { button ->
 			val key = button.attr("tag") ?: return@mapNotNullToSet null
@@ -241,36 +228,50 @@ internal abstract class KeyoappParser(
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
-		return doc.select(selectPage).map { img ->
-			val url = img.src()?.toRelativeUrl(domain) ?: img.parseFailed("Image src not found")
-			MangaPage(
-				id = generateUid(url),
-				url = url,
-				preview = null,
-				source = source,
-			)
+		val cdnUrl = doc.selectFirstOrThrow("script:containsData(primaryUrl)").data().substringAfter("https://cdn.")
+			.substringBefore("\${uid}")
+
+		if (cdnUrl.isNotEmpty()) {
+			return doc.select(selectPage).map { img ->
+				val uid = img.attr("uid") ?: img.parseFailed("Image src not found")
+				val url = "https://cdn.$cdnUrl$uid"
+				MangaPage(
+					id = generateUid(url),
+					url = url,
+					preview = null,
+					source = source,
+				)
+			}
+		} else {
+			return doc.select(selectPage).map { img ->
+				val url = img.src()?.toRelativeUrl(domain) ?: img.parseFailed("Image src not found")
+				MangaPage(
+					id = generateUid(url),
+					url = url,
+					preview = null,
+					source = source,
+				)
+			}
 		}
+
 	}
 
 	protected fun parseChapterDate(dateFormat: DateFormat, date: String?): Long {
 		val d = date?.lowercase() ?: return 0
 		return when {
-			d.endsWith(" ago") -> parseRelativeDate(date)
 
-			d.startsWith("year") -> Calendar.getInstance().apply {
-				add(Calendar.DAY_OF_MONTH, -1)
-				set(Calendar.HOUR_OF_DAY, 0)
-				set(Calendar.MINUTE, 0)
-				set(Calendar.SECOND, 0)
-				set(Calendar.MILLISECOND, 0)
-			}.timeInMillis
+			WordSet(" ago").endsWith(d) -> {
+				parseRelativeDate(d)
+			}
 
-			d.startsWith("today") -> Calendar.getInstance().apply {
-				set(Calendar.HOUR_OF_DAY, 0)
-				set(Calendar.MINUTE, 0)
-				set(Calendar.SECOND, 0)
-				set(Calendar.MILLISECOND, 0)
-			}.timeInMillis
+			WordSet("today").startsWith(d) -> {
+				Calendar.getInstance().apply {
+					set(Calendar.HOUR_OF_DAY, 0)
+					set(Calendar.MINUTE, 0)
+					set(Calendar.SECOND, 0)
+					set(Calendar.MILLISECOND, 0)
+				}.timeInMillis
+			}
 
 			date.contains(Regex("""\d(st|nd|rd|th)""")) -> date.split(" ").map {
 				if (it.contains(Regex("""\d\D\D"""))) {
@@ -288,17 +289,24 @@ internal abstract class KeyoappParser(
 		val number = Regex("""(\d+)""").find(date)?.value?.toIntOrNull() ?: return 0
 		val cal = Calendar.getInstance()
 		return when {
-			WordSet("second").anyWordIn(date) -> cal.apply { add(Calendar.SECOND, -number) }.timeInMillis
+			WordSet("second")
+				.anyWordIn(date) -> cal.apply { add(Calendar.SECOND, -number) }.timeInMillis
 
-			WordSet("minute", "minutes").anyWordIn(date) -> cal.apply { add(Calendar.MINUTE, -number) }.timeInMillis
+			WordSet("minute", "minutes")
+				.anyWordIn(date) -> cal.apply { add(Calendar.MINUTE, -number) }.timeInMillis
 
-			WordSet("hour", "hours").anyWordIn(date) -> cal.apply { add(Calendar.HOUR, -number) }.timeInMillis
+			WordSet("hour", "hours")
+				.anyWordIn(date) -> cal.apply { add(Calendar.HOUR, -number) }.timeInMillis
 
-			WordSet("day", "days").anyWordIn(date) -> cal.apply { add(Calendar.DAY_OF_MONTH, -number) }.timeInMillis
+			WordSet("day", "days")
+				.anyWordIn(date) -> cal.apply { add(Calendar.DAY_OF_MONTH, -number) }.timeInMillis
 
-			WordSet("month", "months").anyWordIn(date) -> cal.apply { add(Calendar.MONTH, -number) }.timeInMillis
+			WordSet("month", "months")
+				.anyWordIn(date) -> cal.apply { add(Calendar.MONTH, -number) }.timeInMillis
 
-			WordSet("year").anyWordIn(date) -> cal.apply { add(Calendar.YEAR, -number) }.timeInMillis
+			WordSet("year")
+				.anyWordIn(date) -> cal.apply { add(Calendar.YEAR, -number) }.timeInMillis
+
 			else -> 0
 		}
 	}

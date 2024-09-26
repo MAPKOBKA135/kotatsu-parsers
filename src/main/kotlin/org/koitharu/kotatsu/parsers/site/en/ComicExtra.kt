@@ -14,30 +14,35 @@ import java.util.*
 @MangaSourceParser("COMICEXTRA", "ComicExtra", "en")
 internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.COMICEXTRA, 25) {
 
-	override val availableSortOrders: Set<SortOrder> =
-		EnumSet.of(SortOrder.POPULARITY, SortOrder.UPDATED, SortOrder.NEWEST)
-
-	override val availableStates: Set<MangaState> = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
-
 	override val configKeyDomain = ConfigKey.Domain("comixextra.com")
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
+	override val availableSortOrders: Set<SortOrder> =
+		EnumSet.of(SortOrder.POPULARITY, SortOrder.UPDATED, SortOrder.NEWEST)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
+	)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
 	}
 
-	override val isMultipleTagsSupported = false
-
-
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
 			append("/")
-			when (filter) {
-				is MangaListFilter.Search -> {
+			when {
+				!filter.query.isNullOrEmpty() -> {
 					append("search?keyword=")
 					append(filter.query.urlEncoded())
 					if (page > 1) {
@@ -46,7 +51,8 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 					}
 				}
 
-				is MangaListFilter.Advanced -> {
+				else -> {
+
 					if (filter.tags.isNotEmpty() && filter.states.isEmpty()) {
 						filter.tags.oneOrThrowIfMany()?.let {
 							append(it.key)
@@ -62,10 +68,12 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 							)
 						}
 
-					} else if (filter.tags.isNotEmpty() && filter.states.isNotEmpty()) {
+					}
+
+					if (filter.tags.isNotEmpty() && filter.states.isNotEmpty()) {
 						throw IllegalArgumentException(ErrorMessages.FILTER_BOTH_STATES_GENRES_NOT_SUPPORTED)
 					} else {
-						when (filter.sortOrder) {
+						when (order) {
 							SortOrder.POPULARITY -> append("popular-comic")
 							SortOrder.UPDATED -> append("new-comic")
 							SortOrder.NEWEST -> append("recent-comic")
@@ -78,15 +86,6 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 						append(page.toString())
 					}
 				}
-
-				null -> {
-					append("popular-comic")
-					if (page > 1) {
-						append("/")
-						append(page.toString())
-					}
-				}
-
 			}
 		}
 		val doc = webClient.httpGet(url).parseHtml()
@@ -113,7 +112,7 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/popular-comic").parseHtml()
 		return doc.select("li.tag-item a").mapNotNullToSet { a ->
 			MangaTag(

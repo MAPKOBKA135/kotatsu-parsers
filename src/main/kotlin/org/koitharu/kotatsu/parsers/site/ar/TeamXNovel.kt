@@ -17,8 +17,6 @@ import java.util.*
 internal class TeamXNovel(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.TEAMXNOVEL, 10) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED, SortOrder.POPULARITY)
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.ABANDONED)
 
 	override val configKeyDomain = ConfigKey.Domain("teamoney.site")
 
@@ -27,65 +25,70 @@ internal class TeamXNovel(context: MangaLoaderContext) : PagedMangaParser(contex
 		keys.add(userAgentKey)
 	}
 
-	override val isMultipleTagsSupported = false
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.ABANDONED),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.MANHWA,
+			ContentType.MANHUA,
+		),
+	)
 
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
-			when (filter) {
 
-				is MangaListFilter.Search -> {
-					append("/?search=")
+			if (order == SortOrder.UPDATED) {
+				if (filter.tags.isNotEmpty() || filter.demographics.isNotEmpty()) {
+					throw IllegalArgumentException("Updated sorting does not support other sorting filters")
+				}
+				append("/?page=")
+				append(page.toString())
+			} else {
+				append("/series?page=")
+				append(page.toString())
+
+				filter.query?.let {
+					append("&search=")
 					append(filter.query.urlEncoded())
-					if (page > 1) {
-						append("&page=")
-						append(page.toString())
-					}
 				}
 
-				is MangaListFilter.Advanced -> {
-					if (filter.tags.isNotEmpty()) {
-						val tag = filter.tags.oneOrThrowIfMany()
-						append("/series?genre=")
-						append(tag?.key.orEmpty())
-						if (page > 1) {
-							append("&page=")
-							append(page.toString())
-						}
-						append("&")
-					} else {
-						when (filter.sortOrder) {
-							SortOrder.POPULARITY -> append("/series")
-							SortOrder.UPDATED -> append("/")
-							else -> append("/")
-						}
-						if (page > 1) {
-							append("?page=")
-							append(page.toString())
-							append("&")
-						} else {
-							append("?")
-						}
-					}
-
-					if (filter.sortOrder == SortOrder.POPULARITY || filter.tags.isNotEmpty()) {
-						filter.states.oneOrThrowIfMany()?.let {
-							append("status=")
-							append(
-								when (it) {
-									MangaState.ONGOING -> "مستمرة"
-									MangaState.FINISHED -> "مكتمل"
-									MangaState.ABANDONED -> "متوقف"
-									else -> "مستمرة"
-								},
-							)
-						}
-					}
+				filter.tags.oneOrThrowIfMany()?.let {
+					append("&genre=")
+					append(it.key)
 				}
 
-				null -> append("/?page=$page")
+				filter.types.forEach {
+					append("&type=")
+					append(
+						when (it) {
+							ContentType.MANGA -> "مانجا ياباني"
+							ContentType.MANHWA -> "مانهوا كورية"
+							ContentType.MANHUA -> "مانها صيني"
+							else -> ""
+						},
+					)
+				}
+
+				filter.states.oneOrThrowIfMany()?.let {
+					append("status=")
+					append(
+						when (it) {
+							MangaState.ONGOING -> "مستمرة"
+							MangaState.FINISHED -> "مكتمل"
+							MangaState.ABANDONED -> "متوقف"
+							else -> "مستمرة"
+						},
+					)
+				}
 			}
 		}
 		val doc = webClient.httpGet(url).parseHtml()
@@ -115,7 +118,7 @@ internal class TeamXNovel(context: MangaLoaderContext) : PagedMangaParser(contex
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/series").parseHtml()
 		return doc.requireElementById("select_genre").select("option").mapNotNullToSet {
 			MangaTag(

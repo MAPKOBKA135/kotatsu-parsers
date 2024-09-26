@@ -27,8 +27,6 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
-	override val isTagsExclusionSupported = true
-
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.POPULARITY,
 		SortOrder.UPDATED,
@@ -36,12 +34,34 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 		SortOrder.NEWEST,
 	)
 
-	override val availableStates: Set<MangaState> =
-		EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED)
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isTagsExclusionSupported = true,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+			isYearRangeSupported = true,
+		)
 
-	private val tagsArray = SuspendLazy(::loadTags)
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.MANHWA,
+			ContentType.MANHUA,
+			ContentType.OTHER,
+		),
+		availableDemographics = EnumSet.of(
+			Demographic.SHOUNEN,
+			Demographic.SHOUJO,
+			Demographic.SEINEN,
+			Demographic.JOSEI,
+			Demographic.NONE,
+		),
+	)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val domain = domain
 		val url = urlBuilder()
 			.host("api.$domain")
@@ -51,50 +71,78 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 			.addQueryParameter("tachiyomi", "true")
 			.addQueryParameter("limit", pageSize.toString())
 			.addQueryParameter("page", page.toString())
-		when (filter) {
-			is MangaListFilter.Search -> {
-				url.addQueryParameter("q", filter.query)
-			}
 
-			null -> {
-				url.addQueryParameter("sort", "view")
-			}
-
-			is MangaListFilter.Advanced -> {
-
-				filter.tags.forEach {
-					url.addQueryParameter("genres", it.key)
-				}
-
-				filter.tagsExclude.forEach {
-					url.addQueryParameter("excludes", it.key)
-				}
-
-				url.addQueryParameter(
-					"sort",
-					when (filter.sortOrder) {
-						SortOrder.POPULARITY -> "view"
-						SortOrder.UPDATED -> "uploaded"
-						SortOrder.NEWEST -> "created_at"
-						SortOrder.RATING -> "rating"
-						else -> "uploaded"
-					},
-				)
-
-				filter.states.oneOrThrowIfMany()?.let {
-					url.addQueryParameter(
-						"status",
-						when (it) {
-							MangaState.ONGOING -> "1"
-							MangaState.FINISHED -> "2"
-							MangaState.ABANDONED -> "3"
-							MangaState.PAUSED -> "4"
-							else -> ""
-						},
-					)
-				}
-			}
+		filter.query?.let {
+			url.addQueryParameter("q", filter.query)
 		}
+
+		filter.tags.forEach {
+			url.addQueryParameter("genres", it.key)
+		}
+
+		filter.tagsExclude.forEach {
+			url.addQueryParameter("excludes", it.key)
+		}
+
+		url.addQueryParameter(
+			"sort",
+			when (order) {
+				SortOrder.NEWEST -> "created_at"
+				SortOrder.POPULARITY -> "view"
+				SortOrder.RATING -> "rating"
+				SortOrder.UPDATED -> "uploaded"
+				else -> "uploaded"
+			},
+		)
+
+		filter.states.oneOrThrowIfMany()?.let {
+			url.addQueryParameter(
+				"status",
+				when (it) {
+					MangaState.ONGOING -> "1"
+					MangaState.FINISHED -> "2"
+					MangaState.ABANDONED -> "3"
+					MangaState.PAUSED -> "4"
+					else -> ""
+				},
+			)
+		}
+
+		if (filter.yearFrom != YEAR_UNKNOWN) {
+			url.addQueryParameter("from", filter.yearFrom.toString())
+		}
+
+		if (filter.yearTo != YEAR_UNKNOWN) {
+			url.addQueryParameter("to", filter.yearTo.toString())
+		}
+
+		filter.types.forEach {
+			url.addQueryParameter(
+				"country",
+				when (it) {
+					ContentType.MANGA -> "jp"
+					ContentType.MANHWA -> "kr"
+					ContentType.MANHUA -> "cn"
+					ContentType.OTHER -> "others"
+					else -> ""
+				},
+			)
+		}
+
+		filter.demographics.forEach {
+			url.addQueryParameter(
+				"demographic",
+				when (it) {
+					Demographic.SHOUNEN -> "1"
+					Demographic.SHOUJO -> "2"
+					Demographic.SEINEN -> "3"
+					Demographic.JOSEI -> "4"
+					Demographic.NONE -> "5"
+					else -> ""
+				},
+			)
+		}
+
 		val ja = webClient.httpGet(url.build()).parseJsonArray()
 		val tagsMap = tagsArray.get()
 		return ja.mapJSON { jo ->
@@ -148,46 +196,6 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 		)
 	}
 
-	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val jo = webClient.httpGet(
-			"https://api.${domain}/chapter/${chapter.url}?tachiyomi=true",
-		).parseJson().getJSONObject("chapter")
-		return jo.getJSONArray("images").mapJSON {
-			val url = it.getString("url")
-			MangaPage(
-				id = generateUid(url),
-				url = url,
-				preview = null,
-				source = source,
-			)
-		}
-	}
-
-	override suspend fun getAvailableTags(): Set<MangaTag> {
-		val sparseArray = tagsArray.get()
-		val set = ArraySet<MangaTag>(sparseArray.size())
-		for (i in 0 until sparseArray.size()) {
-			set.add(sparseArray.valueAt(i))
-		}
-		return set
-	}
-
-	private suspend fun loadTags(): SparseArrayCompat<MangaTag> {
-		val ja = webClient.httpGet("https://api.${domain}/genre").parseJsonArray()
-		val tags = SparseArrayCompat<MangaTag>(ja.length())
-		for (jo in ja.JSONIterator()) {
-			tags.append(
-				jo.getInt("id"),
-				MangaTag(
-					title = jo.getString("name").toTitleCase(Locale.ENGLISH),
-					key = jo.getString("slug"),
-					source = source,
-				),
-			)
-		}
-		return tags
-	}
-
 	private suspend fun getChapters(hid: String): List<MangaChapter> {
 		val ja = webClient.httpGet(
 			url = "https://api.${domain}/comic/$hid/chapters?limit=$CHAPTERS_LIMIT",
@@ -212,7 +220,7 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 					if (vol > 0) {
 						append("Vol ").append(vol).append(' ')
 					}
-					append("Chap ").append(chap)
+					append("Chap ").append(chap.formatSimple())
 					jo.getStringOrNull("title")?.let { append(": ").append(it) }
 				},
 				number = chap,
@@ -225,6 +233,48 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 				source = source,
 			)
 		}
+	}
+
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val jo = webClient.httpGet(
+			"https://api.${domain}/chapter/${chapter.url}?tachiyomi=true",
+		).parseJson().getJSONObject("chapter")
+		return jo.getJSONArray("images").mapJSON {
+			val url = it.getString("url")
+			MangaPage(
+				id = generateUid(url),
+				url = url,
+				preview = null,
+				source = source,
+			)
+		}
+	}
+
+	private val tagsArray = SuspendLazy(::loadTags)
+
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
+		val sparseArray = tagsArray.get()
+		val set = ArraySet<MangaTag>(sparseArray.size())
+		for (i in 0 until sparseArray.size()) {
+			set.add(sparseArray.valueAt(i))
+		}
+		return set
+	}
+
+	private suspend fun loadTags(): SparseArrayCompat<MangaTag> {
+		val ja = webClient.httpGet("https://api.${domain}/genre").parseJsonArray()
+		val tags = SparseArrayCompat<MangaTag>(ja.length())
+		for (jo in ja.JSONIterator()) {
+			tags.append(
+				jo.getInt("id"),
+				MangaTag(
+					title = jo.getString("name").toTitleCase(Locale.ENGLISH),
+					key = jo.getString("slug"),
+					source = source,
+				),
+			)
+		}
+		return tags
 	}
 
 	private fun JSONObject.selectGenres(tags: SparseArrayCompat<MangaTag>): Set<MangaTag> {

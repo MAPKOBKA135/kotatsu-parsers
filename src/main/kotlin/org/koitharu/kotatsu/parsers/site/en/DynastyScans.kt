@@ -20,7 +20,7 @@ import java.util.*
 @MangaSourceParser("DYNASTYSCANS", "DynastyScans", "en")
 internal class DynastyScans(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.DYNASTYSCANS, 117) {
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.ALPHABETICAL)
+
 	override val configKeyDomain = ConfigKey.Domain("dynasty-scans.com")
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
@@ -30,11 +30,20 @@ internal class DynastyScans(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
-	override val isMultipleTagsSupported = false
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.ALPHABETICAL)
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
-		when (filter) {
-			is MangaListFilter.Search -> {
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		when {
+			!filter.query.isNullOrEmpty() -> {
 				val url = buildString {
 					append("https://")
 					append(domain)
@@ -47,7 +56,7 @@ internal class DynastyScans(context: MangaLoaderContext) :
 				return parseMangaListQuery(webClient.httpGet(url).parseHtml())
 			}
 
-			is MangaListFilter.Advanced -> {
+			else -> {
 
 				val url = buildString {
 					append("https://")
@@ -60,7 +69,6 @@ internal class DynastyScans(context: MangaLoaderContext) :
 						append("?view=groupings")
 					} else {
 						append("/series?view=cover")
-
 					}
 
 					append("&page=")
@@ -68,19 +76,8 @@ internal class DynastyScans(context: MangaLoaderContext) :
 				}
 				return parseMangaList(webClient.httpGet(url).parseHtml())
 			}
-
-			null -> {
-				val url = buildString {
-					append("https://")
-					append(domain)
-					append("/series?view=cover&page=")
-					append(page.toString())
-				}
-				return parseMangaList(webClient.httpGet(url).parseHtml())
-			}
 		}
 	}
-
 
 	private fun parseMangaList(doc: Document): List<Manga> {
 		return doc.select("li.span2")
@@ -130,7 +127,7 @@ internal class DynastyScans(context: MangaLoaderContext) :
 			}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		return coroutineScope {
 			(1..3).map { page ->
 				async { getTags(page) }

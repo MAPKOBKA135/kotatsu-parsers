@@ -10,7 +10,7 @@ import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("MANHWA18", "Manhwa18.net", "en", type = ContentType.HENTAI)
-class Manhwa18Parser(context: MangaLoaderContext) :
+internal class Manhwa18Parser(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.MANHWA18, pageSize = 18, searchPageSize = 18) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("manhwa18.net")
@@ -29,15 +29,22 @@ class Manhwa18Parser(context: MangaLoaderContext) :
 			SortOrder.RATING,
 		)
 
-	override val availableStates: Set<MangaState> = EnumSet.of(
-		MangaState.ONGOING,
-		MangaState.FINISHED,
-		MangaState.PAUSED,
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isTagsExclusionSupported = true,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = tagsMap.get().values.toSet(),
+		availableStates = EnumSet.of(
+			MangaState.ONGOING,
+			MangaState.FINISHED,
+			MangaState.PAUSED,
+		),
 	)
-
-	override val isTagsExclusionSupported = true
-
-	private val tagsMap = SuspendLazy(::parseTags)
 
 	override suspend fun getFavicons(): Favicons {
 		return Favicons(
@@ -48,64 +55,64 @@ class Manhwa18Parser(context: MangaLoaderContext) :
 		)
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
-
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
 			append("/tim-kiem?page=")
 			append(page.toString())
 
-			when (filter) {
-				is MangaListFilter.Search -> {
-					append("&q=")
-					append(filter.query.urlEncoded())
-				}
-
-				is MangaListFilter.Advanced -> {
-
-					append("&accept_genres=")
-					if (filter.tags.isNotEmpty()) {
-						append(
-							filter.tags.joinToString(",") { it.key },
-						)
-					}
-
-					append("&reject_genres=")
-					if (filter.tagsExclude.isNotEmpty()) {
-						append(
-							filter.tagsExclude.joinToString(",") { it.key },
-						)
-					}
-
-					append("&sort=")
-					append(
-						when (filter.sortOrder) {
-							SortOrder.ALPHABETICAL -> "az"
-							SortOrder.ALPHABETICAL_DESC -> "za"
-							SortOrder.POPULARITY -> "top"
-							SortOrder.UPDATED -> "update"
-							SortOrder.NEWEST -> "new"
-							SortOrder.RATING -> "like"
-							else -> null
-						},
-					)
-
-					filter.states.oneOrThrowIfMany()?.let {
-						append("&status=")
-						append(
-							when (it) {
-								MangaState.ONGOING -> "1"
-								MangaState.FINISHED -> "3"
-								MangaState.PAUSED -> "2"
-								else -> ""
-							},
-						)
-					}
-				}
-
-				null -> append("&sort=update")
+			filter.query?.let {
+				append("&q=")
+				append(filter.query.urlEncoded())
 			}
+
+			append("&accept_genres=")
+			if (filter.tags.isNotEmpty()) {
+				append(
+					filter.tags.joinToString(",") { it.key },
+				)
+			}
+
+			append("&reject_genres=")
+			if (filter.tagsExclude.isNotEmpty()) {
+				append(
+					filter.tagsExclude.joinToString(",") { it.key },
+				)
+			}
+
+			append("&sort=")
+			append(
+				when (order) {
+					SortOrder.ALPHABETICAL -> "az"
+					SortOrder.ALPHABETICAL_DESC -> "za"
+					SortOrder.POPULARITY -> "top"
+					SortOrder.UPDATED -> "update"
+					SortOrder.NEWEST -> "new"
+					SortOrder.RATING -> "like"
+					else -> "update"
+				},
+			)
+
+			filter.states.oneOrThrowIfMany()?.let {
+				append("&status=")
+				append(
+					when (it) {
+						MangaState.ONGOING -> "1"
+						MangaState.FINISHED -> "3"
+						MangaState.PAUSED -> "2"
+						else -> ""
+					},
+				)
+			}
+
+			// Support author
+			// filter.author.let{
+			// 	the
+			// 	append("&artist=")
+			// 	append(filter.author)
+			// }
+
 		}
 
 		val docs = webClient.httpGet(url).parseHtml()
@@ -179,14 +186,8 @@ class Manhwa18Parser(context: MangaLoaderContext) :
 		)
 	}
 
-	// 7 minutes ago
-	// 5 hours ago
-	// 2 days ago
-	// 2 weeks ago
-	// 4 years ago
 	private fun parseUploadDate(timeStr: String?): Long {
 		timeStr ?: return 0
-
 		val timeWords = timeStr.split(' ')
 		if (timeWords.size != 3) return 0
 		val timeWord = timeWords[1]
@@ -221,9 +222,7 @@ class Manhwa18Parser(context: MangaLoaderContext) :
 		}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
-		return tagsMap.get().values.toSet()
-	}
+	private val tagsMap = SuspendLazy(::parseTags)
 
 	private suspend fun parseTags(): Map<String, MangaTag> {
 		val doc = webClient.httpGet("https://$domain/tim-kiem?q=").parseHtml()

@@ -32,67 +32,55 @@ internal abstract class FoolSlideParser(
 	protected open val pagination = true // false if the manga list has no pages
 	protected open val datePattern = "yyyy.MM.dd"
 
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
 	init {
 		paginator.firstPage = 1
 		searchPaginator.firstPage = 1
 	}
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
-		val doc =
-			when (filter) {
-				is MangaListFilter.Search -> {
-					if (page > 1) {
-						return emptyList()
-					}
+	override suspend fun getFilterOptions() = MangaListFilterOptions()
 
-					val url = buildString {
-						append("https://")
-						append(domain)
-						append("/")
-						append(searchUrl)
-					}
-
-					webClient.httpPost(url, "search=${filter.query.urlEncoded()}").parseHtml()
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		val doc = when {
+			!filter.query.isNullOrEmpty() -> {
+				if (page > 1) {
+					return emptyList()
 				}
 
-				is MangaListFilter.Advanced -> {
-
-					val url = buildString {
-						append("https://")
-						append(domain)
-						append("/")
-						append(listUrl)
-						// For some sites that don't have enough manga and page 2 links to page 1
-						if (!pagination) {
-							if (page > 1) {
-								return emptyList()
-							}
-						} else {
-							append(page.toString())
-						}
-					}
-					webClient.httpGet(url).parseHtml()
-
+				val url = buildString {
+					append("https://")
+					append(domain)
+					append("/")
+					append(searchUrl)
 				}
 
-				null -> {
-					val url = buildString {
-						append("https://")
-						append(domain)
-						append("/")
-						append(listUrl)
-						if (!pagination) {
-							if (page > 1) {
-								return emptyList()
-							}
-						} else {
-							append(page.toString())
-						}
-					}
-					webClient.httpGet(url).parseHtml()
-
-				}
+				webClient.httpPost(url, "search=${filter.query.urlEncoded()}").parseHtml()
 			}
+
+			else -> {
+
+				val url = buildString {
+					append("https://")
+					append(domain)
+					append('/')
+					append(listUrl)
+					// For some sites that don't have enough manga and page 2 links to page 1
+					if (!pagination) {
+						if (page > 1) {
+							return emptyList()
+						}
+					} else {
+						append(page.toString())
+					}
+				}
+				webClient.httpGet(url).parseHtml()
+
+			}
+		}
 
 		return doc.select("div.list div.group").map { div ->
 			val href = div.selectFirstOrThrow("a").attrAsRelativeUrl("href")
@@ -101,7 +89,7 @@ internal abstract class FoolSlideParser(
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
 				coverUrl = div.selectFirst("img")?.src().orEmpty(),// in search no img
-				title = div.selectFirstOrThrow(".title a").text().orEmpty(),
+				title = div.selectFirst(".title a")?.text().orEmpty(),
 				altTitle = null,
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
@@ -114,8 +102,6 @@ internal abstract class FoolSlideParser(
 
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> = emptySet()
-
 	protected open val selectInfo = "div.info"
 
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
@@ -127,21 +113,21 @@ internal abstract class FoolSlideParser(
 			testAdultPage
 		}
 		val chapters = getChapters(doc)
-		val desc = if (doc.selectFirstOrThrow(selectInfo).html().contains("</b>")) {
-			doc.selectFirstOrThrow(selectInfo).text().substringAfterLast(": ")
+		val desc = if (doc.selectFirst(selectInfo)?.html()?.contains("</b>") == true) {
+			doc.selectFirst(selectInfo)?.text()?.substringAfterLast(": ")
 		} else {
-			doc.selectFirstOrThrow(selectInfo).text()
+			doc.selectFirst(selectInfo)?.text()
 		}
-		val author = if (doc.selectFirstOrThrow(selectInfo).html().contains("</b>")) {
-			doc.selectFirstOrThrow(selectInfo).text().substringAfter(": ").substringBefore("Art")
+		val author = if (doc.selectFirst(selectInfo)?.html()?.contains("</b>") == true) {
+			doc.selectFirst(selectInfo)?.text()?.substringAfter(": ")?.substringBefore("Art")
 		} else {
 			null
 		}
 		manga.copy(
 			coverUrl = doc.selectFirst(".thumbnail img")?.src() ?: manga.coverUrl,
-			description = desc,
+			description = desc.orEmpty(),
 			altTitle = null,
-			author = author,
+			author = author.orEmpty(),
 			state = null,
 			chapters = chapters,
 		)
@@ -156,14 +142,14 @@ internal abstract class FoolSlideParser(
 		return doc.body().select(selectChapter).mapChapters(reversed = true) { i, div ->
 			val a = div.selectFirstOrThrow(".title a")
 			val href = a.attrAsRelativeUrl("href")
-			val dateText = div.selectFirstOrThrow(selectDate).text().substringAfter(", ")
+			val dateText = div.selectFirst(selectDate)?.text()?.substringAfter(", ")
 			MangaChapter(
 				id = generateUid(href),
 				name = a.text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,
-				uploadDate = if (div.selectFirstOrThrow(selectDate).text().contains(", ")) {
+				uploadDate = if (div.selectFirst(selectDate)?.text()?.contains(", ") == true) {
 					dateFormat.tryParse(dateText)
 				} else {
 					0

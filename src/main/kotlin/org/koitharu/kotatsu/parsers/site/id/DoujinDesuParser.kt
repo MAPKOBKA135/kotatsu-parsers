@@ -11,7 +11,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("DOUJINDESU", "DoujinDesu.tv", "id")
-class DoujinDesuParser(context: MangaLoaderContext) :
+internal class DoujinDesuParser(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.DOUJINDESU, pageSize = 18) {
 
 	override val configKeyDomain: ConfigKey.Domain
@@ -25,56 +25,86 @@ class DoujinDesuParser(context: MangaLoaderContext) :
 	override val availableSortOrders: Set<SortOrder>
 		get() = EnumSet.of(SortOrder.UPDATED, SortOrder.NEWEST, SortOrder.ALPHABETICAL, SortOrder.POPULARITY)
 
-	override val availableStates: Set<MangaState> = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
 
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
+		availableContentTypes = EnumSet.of(
+			ContentType.MANGA,
+			ContentType.MANHWA,
+			ContentType.DOUJINSHI,
+		),
+	)
 
 	override fun getRequestHeaders(): Headers = Headers.Builder()
 		.add("X-Requested-With", "XMLHttpRequest")
 		.add("Referer", "https://$domain/")
 		.build()
 
-	override suspend fun getListPage(page: Int, filter: MangaListFilter?): List<Manga> {
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = urlBuilder().apply {
 			addPathSegment("manga")
 			addPathSegment("page")
 			addPathSegment("$page/")
 
-			when (filter) {
-				is MangaListFilter.Search -> {
-					addQueryParameter("title", filter.query)
-				}
+			addQueryParameter(
+				"title",
+				filter.query?.let {
+					filter.query
+				},
+			)
 
-				is MangaListFilter.Advanced -> {
-					addQueryParameter("title", "")
-					addQueryParameter(
-						"order",
-						when (filter.sortOrder) {
-							SortOrder.UPDATED -> "update"
-							SortOrder.POPULARITY -> "popular"
-							SortOrder.ALPHABETICAL -> "title"
-							SortOrder.NEWEST -> "latest"
-							else -> "latest"
-						},
-					)
+			addQueryParameter(
+				"order",
+				when (order) {
+					SortOrder.UPDATED -> "update"
+					SortOrder.POPULARITY -> "popular"
+					SortOrder.ALPHABETICAL -> "title"
+					SortOrder.NEWEST -> "latest"
+					else -> "latest"
+				},
+			)
 
-					filter.tags.forEach {
-						addEncodedQueryParameter("genre[]".urlEncoded(), it.key.urlEncoded())
-					}
-
-					filter.states.oneOrThrowIfMany()?.let {
-						addEncodedQueryParameter(
-							"statusx",
-							when (it) {
-								MangaState.ONGOING -> "Publishing"
-								MangaState.FINISHED -> "Finished"
-								else -> ""
-							},
-						)
-					}
-				}
-
-				null -> addQueryParameter("order", "update")
+			filter.tags.forEach {
+				addEncodedQueryParameter("genre[]".urlEncoded(), it.key.urlEncoded())
 			}
+
+			filter.states.oneOrThrowIfMany()?.let {
+				addEncodedQueryParameter(
+					"statusx",
+					when (it) {
+						MangaState.ONGOING -> "Publishing"
+						MangaState.FINISHED -> "Finished"
+						else -> ""
+					},
+				)
+			}
+
+			filter.types.oneOrThrowIfMany()?.let {
+				addQueryParameter(
+					"typex",
+					when (it) {
+						ContentType.MANGA -> "Manga"
+						ContentType.MANHWA -> "Manhwa"
+						ContentType.DOUJINSHI -> "Doujinshi"
+						else -> ""
+					},
+				)
+			}
+
+			// Author
+			// addQueryParameter("author",
+			//	 filter.author?.let {
+			//	 	filter.author
+			//	 }
+			// )
+
 		}.build()
 
 		return webClient.httpGet(url).parseHtml()
@@ -160,7 +190,7 @@ class DoujinDesuParser(context: MangaLoaderContext) :
 			}
 	}
 
-	override suspend fun getAvailableTags(): Set<MangaTag> {
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		return webClient.httpGet("/genre/".toAbsoluteUrl(domain)).parseHtml()
 			.requireElementById("taxonomy")
 			.selectFirstOrThrow(".entries")
