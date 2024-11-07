@@ -22,6 +22,7 @@ internal class NudeMoonParser(
 		"nude-moon.org",
 		"nude-moon.net",
 	)
+
 	override val authUrl: String
 		get() = "https://${domain}/index.php"
 
