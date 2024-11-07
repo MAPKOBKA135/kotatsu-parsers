@@ -2,12 +2,14 @@ package org.koitharu.kotatsu.parsers
 
 import androidx.annotation.CallSuper
 import okhttp3.Headers
+import okhttp3.HttpUrl
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.config.MangaSourceConfig
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.OkHttpWebClient
 import org.koitharu.kotatsu.parsers.network.WebClient
 import org.koitharu.kotatsu.parsers.util.FaviconParser
+import org.koitharu.kotatsu.parsers.util.LinkResolver
 import org.koitharu.kotatsu.parsers.util.RelatedMangaFinder
 import org.koitharu.kotatsu.parsers.util.domain
 import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
@@ -105,4 +107,10 @@ public abstract class MangaParser @InternalParsersApi constructor(
 	public open suspend fun getRelatedManga(seed: Manga): List<Manga> {
 		return RelatedMangaFinder(listOf(this)).invoke(seed)
 	}
+
+	/**
+	 * Return [Manga] object by web link to it
+	 * @see [Manga.publicUrl]
+	 */
+	internal open suspend fun resolveLink(resolver: LinkResolver, link: HttpUrl): Manga? = null
 }

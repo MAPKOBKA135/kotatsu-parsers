@@ -90,7 +90,7 @@ internal abstract class MangaFireParser(
 
 			when {
 				!filter.query.isNullOrEmpty() -> {
-					addQueryParameter("keyword", filter.query)
+					addQueryParameter("keyword", filter.query.space2plus())
 					addQueryParameter(
 						name = "sort",
 						value = when (order) {
@@ -406,9 +406,8 @@ internal abstract class MangaFireParser(
 			return response
 		}
 
-		val offset = request.url.fragment!!.substringAfter("_").toInt()
-
 		return context.redrawImageResponse(response) { bitmap ->
+			val offset = request.url.fragment!!.substringAfter("_").toInt()
 			val width = bitmap.width
 			val height = bitmap.height
 

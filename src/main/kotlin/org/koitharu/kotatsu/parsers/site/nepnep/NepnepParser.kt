@@ -8,9 +8,9 @@ import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
+import org.koitharu.kotatsu.parsers.util.json.asTypedList
 import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
 import org.koitharu.kotatsu.parsers.util.json.mapJSONIndexed
-import org.koitharu.kotatsu.parsers.util.json.toJSONList
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -177,7 +177,7 @@ internal abstract class NepnepParser(
 				doc.selectFirstOrThrow("script:containsData(MainFunction)").data()
 					.substringAfter("vm.Chapters = ")
 					.substringBefore(';'),
-			).toJSONList().reversed(),
+			).asTypedList<JSONObject>().reversed(),
 		)
 
 		val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:SS", sourceLocale)
@@ -186,17 +186,17 @@ internal abstract class NepnepParser(
 			altTitle = null,
 			state = when (doc.selectFirstOrThrow(".list-group-item:contains(Status:) a").text()) {
 				"Ongoing (Scan)", "Ongoing (Publish)",
-				-> MangaState.ONGOING
+					-> MangaState.ONGOING
 
 				"Complete (Scan)", "Complete (Publish)",
-				-> MangaState.FINISHED
+					-> MangaState.FINISHED
 
 				"Cancelled (Scan)", "Cancelled (Publish)",
 				"Discontinued (Scan)", "Discontinued (Publish)",
-				-> MangaState.ABANDONED
+					-> MangaState.ABANDONED
 
 				"Hiatus (Scan)", "Hiatus (Publish)",
-				-> MangaState.PAUSED
+					-> MangaState.PAUSED
 
 				else -> null
 			},

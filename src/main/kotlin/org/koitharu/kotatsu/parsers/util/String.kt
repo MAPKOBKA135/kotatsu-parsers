@@ -12,6 +12,8 @@ import java.security.MessageDigest
 import java.util.*
 import kotlin.math.min
 
+private val REGEX_WHITESPACE = Regex("\\s+")
+
 public fun String.removeSurrounding(vararg chars: Char): String {
 	if (isEmpty()) {
 		return this
@@ -76,11 +78,11 @@ public fun String.transliterate(skipMissing: Boolean): String {
 	}
 }
 
-public fun String.toFileNameSafe() = this.transliterate(false)
+public fun String.toFileNameSafe(): String = this.transliterate(false)
 	.replace(Regex("[^a-z0-9_\\-]", arraySetOf(RegexOption.IGNORE_CASE)), " ")
-	.replace(Regex("\\s+"), "_")
+	.replace(REGEX_WHITESPACE, "_")
 
-public fun String.ellipsize(maxLength: Int) = if (this.length > maxLength) {
+public fun String.ellipsize(maxLength: Int): String = if (this.length > maxLength) {
 	this.take(maxLength - 1) + Typography.ellipsis
 } else this
 
@@ -102,7 +104,9 @@ public fun String.urlEncoded(): String = URLEncoder.encode(this, Charsets.UTF_8.
 
 public fun String.urlDecode(): String = URLDecoder.decode(this, Charsets.UTF_8.name())
 
-public fun String.nl2br() = replace("\n", "<br>")
+public fun String.nl2br(): String = replace("\n", "<br>")
+
+public fun String.space2plus(): String = trim().replace(REGEX_WHITESPACE, "+")
 
 public fun ByteArray.byte2HexFormatted(): String {
 	val str = StringBuilder(size * 2)
@@ -169,7 +173,9 @@ public fun String.substringBetweenLast(from: String, to: String, fallbackValue: 
 	}
 }
 
-public fun String.find(regex: Regex) = regex.find(this)?.value
+public fun String.find(regex: Regex): String? = regex.find(this)?.value
+
+public fun String.findGroupValue(regex: Regex): String? = regex.find(this)?.groupValues?.getOrNull(1)
 
 public fun String.removeSuffix(suffix: Char): String {
 	if (lastOrNull() == suffix) {
@@ -227,7 +233,7 @@ public fun String.almostEquals(other: String, @FloatRange(from = 0.0) threshold:
 	return diff < threshold
 }
 
-public fun String.isNumeric() = all { c -> c.isDigit() }
+public fun String.isNumeric(): Boolean = all { c -> c.isDigit() }
 
 internal fun StringBuilder.removeTrailingZero() {
 	if (length > 2 && get(length - 1) == '0') {

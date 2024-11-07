@@ -11,6 +11,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
+import okhttp3.internal.closeQuietly
 import okhttp3.internal.headersContentLength
 import org.json.JSONArray
 import org.jsoup.nodes.Element
@@ -51,7 +52,10 @@ internal abstract class GroupleParser(
 	private val splitTranslationsKey = ConfigKey.SplitByTranslations(false)
 	private val tagsIndex = SuspendLazy(::fetchTagsMap)
 
-	override fun getRequestHeaders(): Headers = Headers.Builder().add("User-Agent", config[userAgentKey]).build()
+	override fun getRequestHeaders(): Headers = Headers.Builder()
+		.add("User-Agent", config[userAgentKey])
+		.add("Accept-Language", "ru,en-US;q=0.7,en;q=0.3")
+		.build()
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.UPDATED,
@@ -127,8 +131,11 @@ internal abstract class GroupleParser(
 		if (chaptersList == null && root.getElementsContainingOwnText(NO_CHAPTERS).isEmpty()) {
 			root.parseFailed("No chapters found")
 		}
+		val hashRegex = Regex("window.user_hash\\s*=\\s*\'([^\']+)\'")
+		val userHash = doc.select("script").firstNotNullOfOrNull { it.html().findGroupValue(hashRegex) }
 		return manga.copy(
 			source = newSource,
+			title = doc.metaValue("name") ?: manga.title,
 			altTitle = root.selectFirst(".all-names-popover")?.select(".name")?.joinToString { it.text() }
 				?: manga.altTitle,
 			publicUrl = response.request.url.toString(),
@@ -163,7 +170,7 @@ internal abstract class GroupleParser(
 								name = a.text().removePrefix(manga.title).trim(),
 								number = number,
 								volume = volume,
-								url = href,
+								url = href.withQueryParam("d", userHash),
 								uploadDate = dateFormat.tryParse(tr.selectFirst("td.date")?.text()),
 								scanlator = translators,
 								source = newSource,
@@ -174,13 +181,13 @@ internal abstract class GroupleParser(
 						val translationData = JSONArray(a.attr("data-translations"))
 						translationData.mapJSON { jo ->
 							val personId = jo.getLong("personId")
-							val link = href.setQueryParam("tran", personId.toString())
+							val link = href.withQueryParam("tran", personId.toString())
 							MangaChapter(
 								id = generateUid(link),
 								name = a.text().removePrefix(manga.title).trim(),
 								number = number,
 								volume = volume,
-								url = link,
+								url = link.withQueryParam("d", userHash),
 								uploadDate = dateFormat.tryParse(jo.getStringOrNull("dateCreated")),
 								scanlator = null,
 								source = newSource,
@@ -317,7 +324,7 @@ internal abstract class GroupleParser(
 		SortOrder.UPDATED -> "updated"
 		SortOrder.ADDED,
 		SortOrder.NEWEST,
-		-> "created"
+			-> "created"
 
 		SortOrder.RATING -> "votes"
 		else -> "rate"
@@ -381,6 +388,7 @@ internal abstract class GroupleParser(
 	private fun Response.checkAuthRequired(): Response {
 		val lastPathSegment = request.url.pathSegments.lastOrNull() ?: return this
 		if (lastPathSegment == "login") {
+			closeQuietly()
 			throw AuthRequiredException(source)
 		}
 		return this
@@ -491,7 +499,8 @@ internal abstract class GroupleParser(
 		return result
 	}
 
-	private fun String.setQueryParam(name: String, value: String): String {
+	private fun String.withQueryParam(name: String, value: String?): String {
+		if (value == null) return this
 		return toAbsoluteUrl(domain)
 			.toHttpUrl()
 			.newBuilder()

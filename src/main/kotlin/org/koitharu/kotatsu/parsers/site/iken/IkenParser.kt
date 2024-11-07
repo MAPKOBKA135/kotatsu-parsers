@@ -6,9 +6,10 @@ import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
+import org.koitharu.kotatsu.parsers.util.json.asTypedList
 import org.koitharu.kotatsu.parsers.util.json.getBooleanOrDefault
+import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
 import org.koitharu.kotatsu.parsers.util.json.mapJSON
-import org.koitharu.kotatsu.parsers.util.json.toJSONList
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -131,13 +132,17 @@ internal abstract class IkenParser(
 		val seriesId = manga.id
 		val url = "https://$domain/api/chapters?postId=$seriesId&skip=0&take=1000&order=desc&userid="
 		val json = webClient.httpGet(url).parseJson().getJSONObject("post")
-		val slug = json.getString("slug")
-		val data = json.getJSONArray("chapters").toJSONList()
+		val slug = json.getStringOrNull("slug")
+		val data = json.getJSONArray("chapters").asTypedList<JSONObject>()
 		val dateFormat = SimpleDateFormat(datePattern, Locale.ENGLISH)
 		return manga.copy(
 			chapters = data.mapChapters(reversed = true) { i, it ->
-				val chapterUrl =
-					"/series/$slug/${it.getString("slug")}"
+				val slugName = if (slug.isNullOrEmpty()) {
+					it.getJSONObject("mangaPost").getString("slug")
+				} else {
+					slug
+				}
+				val chapterUrl = "/series/$slugName/${it.getString("slug")}"
 				MangaChapter(
 					id = it.getLong("id"),
 					name = "Chapter : ${it.getInt("number")}",
@@ -172,10 +177,10 @@ internal abstract class IkenParser(
 	protected open suspend fun fetchAvailableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/series").parseHtml()
 		return doc.selectLastOrThrow("select").select("option[value]").mapNotNullToSet {
-			val key = it.attr("value") ?: return@mapNotNullToSet null
+			val key = it.attrOrNull("value") ?: return@mapNotNullToSet null
 			MangaTag(
 				key = key,
-				title = it.text() ?: key,
+				title = (it.text() ?: key).toTitleCase(sourceLocale),
 				source = source,
 			)
 		}

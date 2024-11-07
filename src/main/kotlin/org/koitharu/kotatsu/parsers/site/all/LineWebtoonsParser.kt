@@ -86,7 +86,7 @@ internal abstract class LineWebtoonsParser(
 		val episodes = firstResult
 			.getJSONObject("episodeList")
 			.getJSONArray("episode")
-			.toJSONList()
+			.asTypedList<JSONObject>()
 			.toMutableList()
 
 		while (episodes.count() < totalEpisodeCount) {
@@ -94,7 +94,7 @@ internal abstract class LineWebtoonsParser(
 				url = "/lineWebtoon/webtoon/challengeEpisodeList.json?v=2&titleNo=$titleNo&startIndex=${episodes.count()}&pageSize=30",
 			).getJSONObject("episodeList")
 				.getJSONArray("episode")
-				.toJSONList()
+				.asTypedList<JSONObject>()
 
 			episodes.addAll(page)
 		}
@@ -234,6 +234,11 @@ internal abstract class LineWebtoonsParser(
 					source = source,
 				)
 			}
+	}
+
+	override suspend fun resolveLink(resolver: LinkResolver, link: HttpUrl): Manga? {
+		val titleNo = link.queryParameter("title_no") ?: return null
+		return resolver.resolveManga(this, url = titleNo.toString())
 	}
 
 	private fun parseTag(jo: JSONObject): MangaTag {

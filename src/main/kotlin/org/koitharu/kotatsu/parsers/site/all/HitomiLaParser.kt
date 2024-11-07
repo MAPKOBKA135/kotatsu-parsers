@@ -410,9 +410,7 @@ internal class HitomiLaParser(context: MangaLoaderContext) : MangaParser(context
 		for (i in 0.until(numberOfKeys)) {
 			val keySize = buffer.int
 
-			if (keySize == 0 || keySize > 32) {
-				throw Exception("fatal: !keySize || keySize > 32")
-			}
+			check(keySize in 1..32) { "Invalid key size $keySize" }
 
 			keys.add(uData.sliceArray(buffer.position().until(buffer.position() + keySize)))
 			buffer.position(buffer.position() + keySize)
@@ -681,11 +679,12 @@ internal class HitomiLaParser(context: MangaLoaderContext) : MangaParser(context
 		return hash.replace(Regex("""^.*(..)(.)$"""), "$2/$1")
 	}
 
-	private suspend fun subdomainFromURL(url: String, base: String? = null): String {
+	private suspend fun subdomainFromURL(url: String, base: String?): String {
 		var retval = "b"
 
-		if (!base.isNullOrBlank())
+		if (!base.isNullOrBlank()) {
 			retval = base
+		}
 
 		val regex = Regex("""/[0-9a-f]{61}([0-9a-f]{2})([0-9a-f])""")
 		val hashMatch = regex.find(url) ?: return "a"

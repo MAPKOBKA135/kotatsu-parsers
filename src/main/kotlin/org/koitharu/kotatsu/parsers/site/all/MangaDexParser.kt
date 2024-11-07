@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import okhttp3.HttpUrl
+import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParser
@@ -199,73 +201,28 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 			}
 		}
 		val json = webClient.httpGet(url).parseJson().getJSONArray("data")
-		return json.mapJSON { jo ->
-			val id = jo.getString("id")
-			val attrs = jo.getJSONObject("attributes")
-			val relations = jo.getJSONArray("relationships").associateByKey("type")
-			val cover = relations["cover_art"]
-				?.getJSONObject("attributes")
-				?.getString("fileName")
-				?.let {
-					"https://uploads.$domain/covers/$id/$it"
-				}
-			Manga(
-				id = generateUid(id),
-				title = requireNotNull(attrs.getJSONObject("title").selectByLocale()) {
-					"Title should not be null"
-				},
-				altTitle = attrs.optJSONObject("altTitles")?.selectByLocale(),
-				url = id,
-				publicUrl = "https://$domain/title/$id",
-				rating = RATING_UNKNOWN,
-				isNsfw = when (attrs.getStringOrNull("contentRating")) {
-					"erotica", "pornographic" -> true
-					else -> false
-				},
-				coverUrl = cover?.plus(".256.jpg").orEmpty(),
-				largeCoverUrl = cover,
-				description = attrs.optJSONObject("description")?.selectByLocale(),
-				tags = attrs.getJSONArray("tags").mapJSONToSet { tag ->
-					MangaTag(
-						title = tag.getJSONObject("attributes")
-							.getJSONObject("name")
-							.firstStringValue()
-							.toTitleCase(),
-						key = tag.getString("id"),
-						source = source,
-					)
-				},
-				state = when (attrs.getStringOrNull("status")) {
-					"ongoing" -> MangaState.ONGOING
-					"completed" -> MangaState.FINISHED
-					"hiatus" -> MangaState.PAUSED
-					"cancelled" -> MangaState.ABANDONED
-					else -> null
-				},
-				author = (relations["author"] ?: relations["artist"])
-					?.getJSONObject("attributes")
-					?.getStringOrNull("name"),
-				source = source,
-			)
-		}
+		return json.mapJSON { jo -> jo.fetchManga(null) }
 	}
 
-	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
-		val domain = domain
+	override suspend fun getDetails(manga: Manga): Manga {
 		val mangaId = manga.url.removePrefix("/")
-		val attrsDeferred = async {
+		return getDetails(mangaId)
+	}
+
+	override suspend fun resolveLink(resolver: LinkResolver, link: HttpUrl): Manga? {
+		val regex = Regex("[0-9a-f\\-]{10,}", RegexOption.IGNORE_CASE)
+		val mangaId = link.pathSegments.find { regex.matches(it) } ?: return null
+		return getDetails(mangaId)
+	}
+
+	private suspend fun getDetails(mangaId: String): Manga = coroutineScope {
+		val jsonDeferred = async {
 			webClient.httpGet(
 				"https://api.$domain/manga/${mangaId}?includes[]=artist&includes[]=author&includes[]=cover_art",
-			).parseJson().getJSONObject("data").getJSONObject("attributes")
+			).parseJson().getJSONObject("data")
 		}
 		val feedDeferred = async { loadChapters(mangaId) }
-		val mangaAttrs = attrsDeferred.await()
-		val feed = feedDeferred.await()
-		manga.copy(
-			description = mangaAttrs.optJSONObject("description")?.selectByLocale()
-				?: manga.description,
-			chapters = mapChapters(feed),
-		)
+		jsonDeferred.await().fetchManga(mapChapters(feedDeferred.await()))
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
@@ -312,7 +269,58 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 			}
 	}
 
-	private fun JSONObject.firstStringValue() = values().next() as String
+	private fun JSONObject.fetchManga(chapters: List<MangaChapter>?): Manga {
+		val id = getString("id")
+		val attrs = getJSONObject("attributes")
+		val relations = getJSONArray("relationships").associateByKey("type")
+		val cover = relations["cover_art"]
+			?.getJSONObject("attributes")
+			?.getString("fileName")
+			?.let {
+				"https://uploads.$domain/covers/$id/$it"
+			}
+		return Manga(
+			id = generateUid(id),
+			title = requireNotNull(attrs.getJSONObject("title").selectByLocale()) {
+				"Title should not be null"
+			},
+			altTitle = attrs.optJSONArray("altTitles")?.flatten()?.selectByLocale(),
+			url = id,
+			publicUrl = "https://$domain/title/$id",
+			rating = RATING_UNKNOWN,
+			isNsfw = when (attrs.getStringOrNull("contentRating")) {
+				"erotica", "pornographic" -> true
+				else -> false
+			},
+			coverUrl = cover?.plus(".256.jpg").orEmpty(),
+			largeCoverUrl = cover,
+			description = attrs.optJSONObject("description")?.selectByLocale(),
+			tags = attrs.getJSONArray("tags").mapJSONToSet { tag ->
+				MangaTag(
+					title = tag.getJSONObject("attributes")
+						.getJSONObject("name")
+						.firstStringValue()
+						.toTitleCase(),
+					key = tag.getString("id"),
+					source = source,
+				)
+			},
+			state = when (attrs.getStringOrNull("status")) {
+				"ongoing" -> MangaState.ONGOING
+				"completed" -> MangaState.FINISHED
+				"hiatus" -> MangaState.PAUSED
+				"cancelled" -> MangaState.ABANDONED
+				else -> null
+			},
+			author = (relations["author"] ?: relations["artist"])
+				?.getJSONObject("attributes")
+				?.getStringOrNull("name"),
+			chapters = chapters,
+			source = source,
+		)
+	}
+
+	private fun JSONObject.firstStringValue() = entries<String>().first().value
 
 	private fun JSONObject.selectByLocale(): String? {
 		val preferredLocales = context.getPreferredLocales()
@@ -320,7 +328,20 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 			getStringOrNull(locale.language)?.let { return it }
 			getStringOrNull(locale.toLanguageTag())?.let { return it }
 		}
-		return getStringOrNull(LOCALE_FALLBACK) ?: values().nextOrNull() as? String
+		return getStringOrNull(LOCALE_FALLBACK) ?: entries<String>().firstOrNull()?.value
+	}
+
+	private fun JSONArray.flatten(): JSONObject {
+		val result = JSONObject()
+		repeat(length()) { i ->
+			val jo = optJSONObject(i)
+			if (jo != null) {
+				for (key in jo.keys()) {
+					result.put(key, jo.get(key))
+				}
+			}
+		}
+		return result
 	}
 
 	private suspend fun loadChapters(mangaId: String): List<JSONObject> {
@@ -366,7 +387,7 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 		val json = webClient.httpGet(url).parseJson()
 		if (json.getString("result") == "ok") {
 			return Chapters(
-				data = json.optJSONArray("data")?.toJSONList().orEmpty(),
+				data = json.optJSONArray("data")?.asTypedList<JSONObject>().orEmpty(),
 				total = json.getInt("total"),
 			)
 		} else {
@@ -420,6 +441,16 @@ internal class MangaDexParser(context: MangaLoaderContext) : MangaParser(context
 			}
 		}
 		return chaptersBuilder.toList()
+	}
+
+	private fun JSONArray.associateByKey(key: String): Map<String, JSONObject> {
+		val destination = LinkedHashMap<String, JSONObject>(length())
+		repeat(length()) { i ->
+			val item = getJSONObject(i)
+			val keyValue = item.getString(key)
+			destination[keyValue] = item
+		}
+		return destination
 	}
 
 	private class Chapters(

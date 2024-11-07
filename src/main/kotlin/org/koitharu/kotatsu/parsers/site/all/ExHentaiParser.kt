@@ -6,6 +6,7 @@ import androidx.collection.set
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
+import okhttp3.internal.closeQuietly
 import okhttp3.internal.headersContentLength
 import org.jsoup.internal.StringUtil
 import org.jsoup.nodes.Element
@@ -21,7 +22,6 @@ import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 import java.util.Collections.emptyList
 import java.util.concurrent.TimeUnit
-import kotlin.math.pow
 
 private const val DOMAIN_UNAUTHORIZED = "e-hentai.org"
 private const val DOMAIN_AUTHORIZED = "exhentai.org"
@@ -45,7 +45,6 @@ internal class ExHentaiParser(
 
 	private val ratingPattern = Regex("-?[0-9]+px")
 	private val authCookies = arrayOf("ipb_member_id", "ipb_pass_hash")
-	private var updateDm = false
 	private val nextPages = SparseArrayCompat<Long>()
 	private val suspiciousContentKey = ConfigKey.ShowSuspiciousContent(false)
 
@@ -112,6 +111,15 @@ internal class ExHentaiParser(
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		return getListPage(page, order, filter, updateDm = false)
+	}
+
+	private suspend fun getListPage(
+		page: Int,
+		order: SortOrder,
+		filter: MangaListFilter,
+		updateDm: Boolean,
+	): List<Manga> {
 		val next = nextPages.get(page, 0L)
 
 		if (page > 0 && next == 0L) {
@@ -136,15 +144,18 @@ internal class ExHentaiParser(
 			url.addQueryParameter("f_sh", "on")
 		}
 		val body = webClient.httpGet(url.build()).parseHtml().body()
-		val root = body.selectFirst("table.itg")
-			?.selectFirst("tbody")
-			?: if (updateDm) {
-				body.parseFailed("Cannot find root")
+		val root = body.selectFirst("table.itg")?.selectFirst("tbody")
+		if (root == null) {
+			if (updateDm) {
+				if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+					return emptyList()
+				} else {
+					body.parseFailed("Cannot find root")
+				}
 			} else {
-				updateDm = true
-				return getListPage(page, order, filter)
+				return getListPage(page, order, filter, updateDm = true)
 			}
-		updateDm = false
+		}
 		nextPages[page + 1] = getNextTimestamp(body)
 
 		return root.children().mapNotNull { tr ->
@@ -154,13 +165,6 @@ internal class ExHentaiParser(
 			val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
 			val href = a.attrAsRelativeUrl("href")
 			val tagsDiv = gLink.nextElementSibling() ?: gLink.parseFailed("tags div not found")
-			val mainTag = td2.selectFirst("div.cn")?.let { div ->
-				MangaTag(
-					title = div.text().toTitleCase(Locale.ENGLISH),
-					key = tagIdByClass(div.classNames()) ?: return@let null,
-					source = source,
-				)
-			}
 			Manga(
 				id = generateUid(href),
 				title = gLink.text().cleanupTitle(),
@@ -170,7 +174,7 @@ internal class ExHentaiParser(
 				rating = td2.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
 				isNsfw = true,
 				coverUrl = td1.selectFirst("img")?.absUrl("src").orEmpty(),
-				tags = setOfNotNull(mainTag) + tagsDiv.parseTags(),
+				tags = tagsDiv.parseTags(),
 				state = null,
 				author = tagsDiv.getElementsContainingOwnText("artist:").first()
 					?.nextElementSibling()?.text(),
@@ -249,8 +253,9 @@ internal class ExHentaiParser(
 		return doc.body().requireElementById("img").attrAsAbsoluteUrl("src")
 	}
 
-	private val tags =
-		"ahegao,anal,angel,apron,bandages,bbw,bdsm,beauty mark,big areolae,big ass,big breasts,big clit,big lips," +
+	@Suppress("SpellCheckingInspection")
+	private val tags: String
+		get() = "ahegao,anal,angel,apron,bandages,bbw,bdsm,beauty mark,big areolae,big ass,big breasts,big clit,big lips," +
 			"big nipples,bikini,blackmail,bloomers,blowjob,bodysuit,bondage,breast expansion,bukkake,bunny girl,business suit," +
 			"catgirl,centaur,cheating,chinese dress,christmas,collar,corset,cosplaying,cowgirl,crossdressing,cunnilingus," +
 			"dark skin,daughter,deepthroat,defloration,demon girl,double penetration,dougi,dragon,drunk,elf,exhibitionism,farting," +
@@ -284,10 +289,11 @@ internal class ExHentaiParser(
 		val response = chain.proceed(chain.request())
 		if (response.headersContentLength() <= 256) {
 			val text = response.peekBody(256).string()
-			if (text.startsWith("Your IP address has been temporarily banned")) {
+			if (text.contains("IP address has been temporarily banned", ignoreCase = true)) {
 				val hours = Regex("([0-9]+) hours?").find(text)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0
 				val minutes = Regex("([0-9]+) minutes?").find(text)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0
 				val seconds = Regex("([0-9]+) seconds?").find(text)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0
+				response.closeQuietly()
 				throw TooManyRequestExceptions(
 					url = response.request.url.toString(),
 					retryAfter = TimeUnit.HOURS.toMillis(hours)
@@ -358,19 +364,6 @@ internal class ExHentaiParser(
 		return result.toString()
 	}
 
-	private fun String.cssUrl(): String? {
-		val fromIndex = indexOf("url(")
-		if (fromIndex == -1) {
-			return null
-		}
-		val toIndex = indexOf(')', startIndex = fromIndex)
-		return if (toIndex == -1) {
-			null
-		} else {
-			substring(fromIndex + 4, toIndex).trim()
-		}
-	}
-
 	private fun Element.parseTags(): Set<MangaTag> {
 
 		fun Element.parseTag() = textOrNull()?.let {
@@ -383,12 +376,6 @@ internal class ExHentaiParser(
 			getElementsByAttributeValueStarting("title", prefix).mapNotNullTo(result, Element::parseTag)
 		}
 		return result
-	}
-
-	private fun tagIdByClass(classNames: Collection<String>): String? {
-		val className = classNames.find { x -> x.startsWith("ct") } ?: return null
-		val num = className.drop(2).toIntOrNull(16) ?: return null
-		return 2.0.pow(num).toInt().toString()
 	}
 
 	private fun getNextTimestamp(root: Element): Long {
