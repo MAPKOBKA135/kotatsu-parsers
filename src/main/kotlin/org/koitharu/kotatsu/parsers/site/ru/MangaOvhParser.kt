@@ -137,7 +137,7 @@ internal class MangaOvhParser(
 				tags = jo.getJSONArray("labels").mapJSONToSet { it.toMangaTag() },
 				state = jo.getStringOrNull("status")?.toMangaState(),
 				author =
-				jo.getJSONArray("relations").toJSONList().firstNotNullOfOrNull {
+				jo.getJSONArray("relations").asTypedList<JSONObject>().firstNotNullOfOrNull {
 					if (it.getStringOrNull("type") == "AUTHOR") {
 						it.getJSONObject("publisher").getStringOrNull("name")
 					} else {
