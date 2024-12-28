@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("KOMIKCAST", "KomikCast", "id")
 internal class Komikcast(context: MangaLoaderContext) :
-	MangaReaderParser(context, MangaParserSource.KOMIKCAST, "komikcast.cz", pageSize = 60, searchPageSize = 28) {
+	MangaReaderParser(context, MangaParserSource.KOMIKCAST, "komikcast.bz", pageSize = 60, searchPageSize = 28) {
 
 	override val listUrl = "/daftar-komik"
 	override val datePattern = "MMM d, yyyy"
@@ -158,7 +158,7 @@ internal class Komikcast(context: MangaLoaderContext) :
 		val test = docs.select("script:containsData(ts_reader)")
 		if (test.isNullOrEmpty()) {
 			return docs.select("div#chapter_body img").map { img ->
-				val url = img.src()?.toRelativeUrl(domain) ?: img.parseFailed("Image src not found")
+				val url = img.requireSrc().toRelativeUrl(domain)
 				MangaPage(
 					id = generateUid(url),
 					url = url,

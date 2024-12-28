@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.parsers.site.vi
 
-import androidx.collection.arraySetOf
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.PagedMangaParser
@@ -14,11 +13,11 @@ import java.util.*
 @MangaSourceParser("TRUYENGG", "TruyenGG", "vi")
 internal class TruyenGG(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.TRUYENGG, 42) {
 
-  	override val configKeyDomain = ConfigKey.Domain("truyengg.com")
+	override val configKeyDomain = ConfigKey.Domain("truyengg.com")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
-	  	super.onCreateConfig(keys)
-	  	keys.add(userAgentKey)
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
 	}
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
@@ -62,6 +61,7 @@ internal class TruyenGG(context: MangaLoaderContext) : PagedMangaParser(context,
 					append(filter.query.urlEncoded())
 				}
 			}
+
 			else -> {
 				buildString {
 					append("https://")
@@ -147,11 +147,11 @@ internal class TruyenGG(context: MangaLoaderContext) : PagedMangaParser(context,
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH)
-		
+
 		return manga.copy(
 			altTitle = doc.selectFirst("h2.other-name")?.text(),
-			author = doc.select("p:contains(Tác Giả) + p").joinToString { it.text() }.takeUnless { it.isEmpty() },
-			tags = doc.select("a.clblue").mapToSet { 
+			author = doc.select("p:contains(Tác Giả) + p").joinToString { it.text() }.nullIfEmpty(),
+			tags = doc.select("a.clblue").mapToSet {
 				MangaTag(
 					key = it.attr("href").substringAfterLast('-').substringBeforeLast('.'),
 					title = it.text(),
@@ -188,7 +188,7 @@ internal class TruyenGG(context: MangaLoaderContext) : PagedMangaParser(context,
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		return doc.select(".content_detail img").map { img ->
-			val url = img.src() ?: img.parseFailed("Image src not found")
+			val url = img.requireSrc()
 			MangaPage(
 				id = generateUid(url),
 				url = url,
@@ -198,14 +198,14 @@ internal class TruyenGG(context: MangaLoaderContext) : PagedMangaParser(context,
 		}
 	}
 
-    private suspend fun fetchAvailableTags(): Set<MangaTag> {
-        val doc = webClient.httpGet("https://$domain/tim-kiem-nang-cao.html").parseHtml()
-        return doc.select(".advsearch-form div.genre-item").mapToSet {
-            MangaTag(
-                key = it.selectFirstOrThrow("span").attr("data-id"),
-                title = it.text(),
-                source = source,
-            )
-        }
-    }
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
+		val doc = webClient.httpGet("https://$domain/tim-kiem-nang-cao.html").parseHtml()
+		return doc.select(".advsearch-form div.genre-item").mapToSet {
+			MangaTag(
+				key = it.selectFirstOrThrow("span").attr("data-id"),
+				title = it.text(),
+				source = source,
+			)
+		}
+	}
 } 

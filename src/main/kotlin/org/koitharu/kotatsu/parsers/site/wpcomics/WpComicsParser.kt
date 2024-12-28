@@ -6,7 +6,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
@@ -161,7 +163,7 @@ internal abstract class WpComicsParser(
 				publicUrl = absUrl,
 				rating = RATING_UNKNOWN,
 				isNsfw = false,
-				coverUrl = item.selectFirst("div.image a img")?.absUrl("data-original").orEmpty(),
+				coverUrl = item.selectFirst("div.image a img")?.findImageUrl().orEmpty(),
 				largeCoverUrl = null,
 				tags = mangaTags,
 				state = mangaState,
@@ -230,7 +232,6 @@ internal abstract class WpComicsParser(
 		)
 	}
 
-
 	protected open val selectDate = "div.col-xs-4"
 	protected open val selectChapter = "div.list-chapter li.row:not(.heading)"
 
@@ -268,7 +269,7 @@ internal abstract class WpComicsParser(
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		return doc.select(selectPage).map { url ->
-			val img = url.src()?.toRelativeUrl(domain) ?: url.parseFailed("Image src not found")
+			val img = url.requireSrc().toRelativeUrl(domain)
 			MangaPage(
 				id = generateUid(img),
 				url = img,
@@ -329,5 +330,13 @@ internal abstract class WpComicsParser(
 			WordSet("year", "năm").anyWordIn(date) -> cal.apply { add(Calendar.YEAR, -number) }.timeInMillis
 			else -> 0
 		}
+	}
+
+	protected fun Element.findImageUrl(): String? {
+		val attrs = attributes().filter { attr ->
+			attr.value.toHttpUrlOrNull() != null
+		}
+		// src attribute should have a lowest priority
+		return attrs.maxByOrNull { it.key != "src" }?.value
 	}
 }

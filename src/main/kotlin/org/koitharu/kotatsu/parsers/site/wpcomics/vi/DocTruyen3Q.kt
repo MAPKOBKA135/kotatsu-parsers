@@ -12,10 +12,10 @@ import java.util.*
 
 @MangaSourceParser("DOCTRUYEN3Q", "DocTruyen3Q", "vi")
 internal class DocTruyen3Q(context: MangaLoaderContext) :
-	WpComicsParser(context, MangaParserSource.DOCTRUYEN3Q, "doctruyen3qw.pro", 36) {
+	WpComicsParser(context, MangaParserSource.DOCTRUYEN3Q, "doctruyen3qw.com", 36) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain(
-		"doctruyen3qw.pro", "doctruyen3qvip.com", "doctruyen3q.link",
+		"doctruyen3qw.com", "doctruyen3qk.pro", "doctruyen3qw.pro", "doctruyen3qvip.com", "truyen3qvip.com",
 	)
 
 	override val datePattern = "dd/MM/yyyy"
@@ -98,7 +98,7 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("div.image-item img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("div.image-item img")?.findImageUrl().orEmpty(),
 				title = div.selectFirst("h3 a")?.text().orEmpty(),
 				altTitle = null,
 				rating = RATING_UNKNOWN,
@@ -177,7 +177,7 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 		}
 	}
 
-	protected fun parseChapterDate(dateText: String?): Long {
+	private fun parseChapterDate(dateText: String?): Long {
 		if (dateText == null) return 0
 
 		val relativeTimePattern = Regex("(\\d+)\\s*(phút|giờ|ngày|tuần) trước")
@@ -226,7 +226,7 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		return doc.select("div.page-chapter img").mapNotNull { img ->
-			val url = img.src()?.toRelativeUrl(domain) ?: return@mapNotNull null
+			val url = img.attr("src")?.toAbsoluteUrl(domain) ?: return@mapNotNull null
 			MangaPage(
 				id = generateUid(url),
 				url = url,

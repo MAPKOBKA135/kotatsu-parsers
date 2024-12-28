@@ -9,9 +9,9 @@ import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
 import org.koitharu.kotatsu.parsers.util.*
 
-@MangaSourceParser("QUAANHDAOCUTEO", "Quaanhdaocuteo", "vi", ContentType.HENTAI)
+@MangaSourceParser("QUAANHDAOCUTEO", "Quả Anh Đào Cuteo", "vi", ContentType.HENTAI)
 internal class Quaanhdaocuteo(context: MangaLoaderContext) :
-	MadaraParser(context, MangaParserSource.QUAANHDAOCUTEO, "qadc.xyz") {
+	MadaraParser(context, MangaParserSource.QUAANHDAOCUTEO, "quaanhdaocuteo.xyz") {
 	override val datePattern = "dd/MM/yyyy"
 	override val selectPage = "p img"
 
@@ -20,7 +20,7 @@ internal class Quaanhdaocuteo(context: MangaLoaderContext) :
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		val root = doc.body().selectFirstOrThrow(selectBodyPage)
 		return root.select(selectPage).map { img ->
-			val url = img.src()?.toRelativeUrl(domain) ?: img.parseFailed("Image src not found")
+			val url = img.requireSrc().toRelativeUrl(domain)
 			MangaPage(
 				id = generateUid(url),
 				url = url,

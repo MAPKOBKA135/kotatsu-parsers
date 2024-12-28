@@ -5,8 +5,9 @@ import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.mangareader.MangaReaderParser
 
-@MangaSourceParser("FLAMECOMICS", "FlameComics", "en")
-internal class FlameComics(context: MangaLoaderContext) :
-	MangaReaderParser(context, MangaParserSource.FLAMECOMICS, "flamecomics.xyz", pageSize = 24, searchPageSize = 10) {
-	override val listUrl = "/series"
+@MangaSourceParser("MANGATX_CC", "MangaTx.cc", "en")
+internal class MangaTxCc(context: MangaLoaderContext) :
+	MangaReaderParser(context, MangaParserSource.MANGATX_CC, "mangatx.cc", 30, 21) {
+	override val datePattern = "dd-MM-yyyy"
+	override val listUrl = "/manga-list"
 }

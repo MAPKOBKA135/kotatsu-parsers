@@ -6,6 +6,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.jsoup.nodes.Document
+import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.MangaSourceParser
@@ -18,10 +19,11 @@ import java.util.*
 private const val PAGE_SIZE = 15
 private const val SEARCH_PAGE_SIZE = 10
 
+@Broken
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) : MangaParser(context, MangaParserSource.HENTAIVN) {
 
-	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaihvn.tv", "ayamehentai.cc")
+	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaihvn.tv")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -136,7 +138,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) : MangaParser(context
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val docs = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 		return docs.select("#image > img").map {
-			val pageUrl = it.src() ?: it.parseFailed("Image src not found")
+			val pageUrl = it.requireSrc()
 			MangaPage(
 				id = generateUid(pageUrl),
 				url = pageUrl,

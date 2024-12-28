@@ -4,6 +4,7 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.site.wpcomics.WpComicsParser
+import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -11,7 +12,12 @@ import java.util.*
 
 @MangaSourceParser("TOPTRUYEN", "TopTruyen", "vi")
 internal class TopTruyen(context: MangaLoaderContext) :
-	WpComicsParser(context, MangaParserSource.TOPTRUYEN, "www.toptruyenww.pro", 36) {
+	WpComicsParser(context, MangaParserSource.TOPTRUYEN, "www.toptruyenpro1.com", 36) {
+
+	override val configKeyDomain = ConfigKey.Domain(
+		"www.toptruyento.pro",
+		"www.toptruyenpro1.com",
+	)
 
 	override val datePattern = "dd/MM/yyyy"
 
@@ -93,7 +99,7 @@ internal class TopTruyen(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("div.image-item img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("div.image-item img")?.findImageUrl().orEmpty(),
 				title = div.selectFirst("h3 a")?.text().orEmpty(),
 				altTitle = null,
 				rating = RATING_UNKNOWN,
@@ -172,7 +178,7 @@ internal class TopTruyen(context: MangaLoaderContext) :
 		}
 	}
 
-	protected fun parseChapterDate(dateText: String?): Long {
+	private fun parseChapterDate(dateText: String?): Long {
 		if (dateText == null) return 0
 
 		val relativeTimePattern = Regex("(\\d+)\\s*(phút|giờ|ngày|tuần) trước")

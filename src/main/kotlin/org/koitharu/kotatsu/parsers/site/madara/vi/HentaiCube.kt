@@ -11,7 +11,7 @@ import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.util.*
 
-@MangaSourceParser("HENTAICUBE", "HentaiCube", "vi", ContentType.HENTAI)
+@MangaSourceParser("HENTAICUBE", "CBHentai", "vi", ContentType.HENTAI)
 internal class HentaiCube(context: MangaLoaderContext) :
 	MadaraParser(context, MangaParserSource.HENTAICUBE, "hentaicb.pro") {
 
@@ -27,7 +27,7 @@ internal class HentaiCube(context: MangaLoaderContext) :
 		val root = doc.body().selectFirst("div.main-col-inner")?.selectFirst("div.reading-content")
 			?: throw ParseException("Root not found", fullUrl)
 		return root.select("img").map { img ->
-			val url = img.src()?.toRelativeUrl(domain) ?: img.parseFailed("Image src not found")
+			val url = img.requireSrc().toRelativeUrl(domain)
 			MangaPage(
 				id = generateUid(url),
 				url = url,

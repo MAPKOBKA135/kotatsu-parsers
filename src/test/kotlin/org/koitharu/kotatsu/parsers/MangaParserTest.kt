@@ -190,7 +190,7 @@ internal class MangaParserTest {
 	fun favicon(source: MangaParserSource) = runTest(timeout = timeout) {
 		val parser = context.newParserInstance(source)
 		val favicons = parser.getFavicons()
-		val types = setOf("png", "svg", "ico", "gif", "jpg", "jpeg")
+		val types = setOf("png", "svg", "ico", "gif", "jpg", "jpeg", "webp", "avif")
 		assert(favicons.isNotEmpty())
 		favicons.forEach {
 			assert(it.url.isUrlAbsolute()) { "Favicon url is not absolute: ${it.url}" }
@@ -248,7 +248,9 @@ internal class MangaParserTest {
 		for (item in list) {
 			assert(item.url.isNotEmpty()) { "Url is empty" }
 			assert(!item.url.isUrlAbsolute()) { "Url looks like absolute: ${item.url}" }
-			assert(item.coverUrl.isUrlAbsolute()) { "Cover url is not absolute: ${item.coverUrl}" }
+			if (item.coverUrl.isNotEmpty()) { // TODO nullable cover
+				assert(item.coverUrl.isUrlAbsolute()) { "Cover url is not absolute: ${item.coverUrl}" }
+			}
 			assert(item.title.isNotEmpty()) { "Title for ${item.publicUrl} is empty" }
 			assert(item.publicUrl.isUrlAbsolute())
 		}
