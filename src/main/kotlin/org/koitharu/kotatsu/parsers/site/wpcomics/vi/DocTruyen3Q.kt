@@ -3,26 +3,26 @@ package org.koitharu.kotatsu.parsers.site.wpcomics.vi
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.site.wpcomics.WpComicsParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
+import org.koitharu.kotatsu.parsers.site.wpcomics.WpComicsParser
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("DOCTRUYEN3Q", "DocTruyen3Q", "vi")
 internal class DocTruyen3Q(context: MangaLoaderContext) :
-	WpComicsParser(context, MangaParserSource.DOCTRUYEN3Q, "doctruyen3qui.com", 36) {
+	WpComicsParser(context, MangaParserSource.DOCTRUYEN3Q, "doctruyen3qui2.com", 36) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain(
-		"doctruyen3qui.com", // Main repo
+		"doctruyen3qui2.com", // Main domain
 		"doctruyen3qll.net",
 		"doctruyen3q3.net",
 		"doctruyen3qw.com",
 		"doctruyen3qk.pro",
 		"doctruyen3qw.pro",
 		"doctruyen3qvip.com",
-		"truyen3qvip.com", // Main repo
+		"truyen3qvip.com", // Backup domain
 	)
 
 	override val datePattern = "dd/MM/yyyy"
@@ -162,8 +162,8 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 		)
 	}
 
-	override suspend fun getChapters(doc: Document): List<MangaChapter> {
-		return doc.select("li.row:not([style*='display: none'])").mapChapters(reversed = true) { _, element ->
+	override suspend fun getChapters(doc: Document, reversed: Boolean): List<MangaChapter> {
+		return doc.select("li.row:not([style*='display: none'])").mapChapters(reversed) { _, element ->
 			val chapterLink = element.selectFirst("a.chapter") ?: return@mapChapters null
 			val href = chapterLink.attrAsAbsoluteUrlOrNull("href") ?: return@mapChapters null
 			val name = chapterLink.text()
@@ -217,12 +217,7 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 
 			absoluteTimePattern.matches(dateText) -> {
 				val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-				try {
-					val parsedDate = formatter.parse(dateText)
-					parsedDate?.time ?: 0L
-				} catch (e: Exception) {
-					0L
-				}
+				formatter.tryParse(dateText)
 			}
 
 			else -> 0L
