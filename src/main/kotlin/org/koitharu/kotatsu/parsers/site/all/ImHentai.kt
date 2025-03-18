@@ -7,15 +7,15 @@ import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("IMHENTAI", "ImHentai", type = ContentType.HENTAI)
 internal class ImHentai(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.IMHENTAI, pageSize = 20) {
+	LegacyPagedMangaParser(context, MangaParserSource.IMHENTAI, pageSize = 20) {
 
 	override val availableSortOrders: Set<SortOrder> =
 		EnumSet.of(SortOrder.UPDATED, SortOrder.POPULARITY, SortOrder.RATING)
@@ -120,15 +120,15 @@ internal class ImHentai(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = a.selectFirst("img")?.src().orEmpty(),
+				coverUrl = a.selectFirst("img")?.src(),
 				title = div.selectFirst(".caption")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -161,6 +161,7 @@ internal class ImHentai(context: MangaLoaderContext) :
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
+		val author = doc.selectFirst("li:contains(Artists) a.tag")?.ownTextOrNull()
 		manga.copy(
 			tags = doc.body().select("li:contains(Tags) a.tag").mapNotNullToSet {
 				val href = it.attr("href").substringAfterLast("tag/").substringBeforeLast('/')
@@ -170,11 +171,11 @@ internal class ImHentai(context: MangaLoaderContext) :
 					source = source,
 				)
 			},
-			author = doc.selectFirst("li:contains(Artists) a.tag")?.ownTextOrNull(),
+			authors = setOfNotNull(author),
 			chapters = listOf(
 				MangaChapter(
 					id = manga.id,
-					name = manga.title,
+					title = null,
 					number = 1f,
 					volume = 0,
 					url = manga.url,
@@ -197,15 +198,15 @@ internal class ImHentai(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = a.selectFirst("img")?.src().orEmpty(),
+				coverUrl = a.selectFirst("img")?.src(),
 				title = div.selectFirst(".caption")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = false,
+				contentRating = null,
 			)
 		}
 	}

@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.vi
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -11,7 +11,7 @@ import java.util.*
 
 @MangaSourceParser("TRUYENTRANH3Q", "TruyenTranh3Q", "vi")
 internal class TruyenTranh3Q(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.TRUYENTRANH3Q, 42) {
+	LegacyPagedMangaParser(context, MangaParserSource.TRUYENTRANH3Q, 42) {
 
 	private val relativeTimePattern = Regex("(\\d+)\\s*(phút|giờ|ngày|tuần) trước")
 	private val absoluteTimePattern = Regex("(\\d{2}-\\d{2}-\\d{4})")
@@ -120,15 +120,15 @@ internal class TruyenTranh3Q(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(href),
 				title = aTag.text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = aTag.attrAsAbsoluteUrl("href"),
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfw,
+				contentRating = if (isNsfw) ContentRating.ADULT else null,
 				coverUrl = element.selectFirst(".book_avatar a img")?.src(),
 				tags = tags,
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -143,10 +143,11 @@ internal class TruyenTranh3Q(context: MangaLoaderContext) :
 				source = source,
 			)
 		}
+		val author = doc.selectFirst("li.author a")?.textOrNull()
 
 		return manga.copy(
-			altTitle = doc.selectFirst("h2.other-name")?.textOrNull(),
-			author = doc.selectFirst("li.author a")?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst("h2.other-name")?.textOrNull()),
+			authors = setOfNotNull(author),
 			tags = tags,
 			description = doc.selectFirst("div.story-detail-info")?.html(),
 			state = when (doc.selectFirst(".status p.col-xs-9")?.text()) {
@@ -161,7 +162,7 @@ internal class TruyenTranh3Q(context: MangaLoaderContext) :
 				val dateText = div.selectFirst(".time-chap")?.text()
 				MangaChapter(
 					id = generateUid(href),
-					name = name,
+					title = name,
 					number = i + 1f,
 					volume = 0,
 					url = href,

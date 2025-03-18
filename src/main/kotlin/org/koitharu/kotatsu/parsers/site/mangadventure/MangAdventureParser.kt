@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.mangadventure
 import okhttp3.HttpUrl
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
@@ -17,7 +17,7 @@ internal abstract class MangAdventureParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 25,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -105,21 +105,22 @@ internal abstract class MangAdventureParser(
 		val details = requireNotNull(url.get())
 		val chapters = url.addEncodedPathSegment("chapters")
 			.addEncodedQueryParameter("date_format", "timestamp").get()
+		val author = buildString {
+			val authors = details.getJSONArray("authors")
+			val artists = details.getJSONArray("artists")
+			if (authors.length() > 0 && artists.length() > 0) {
+				authors.joinTo(this, postfix = ", ")
+				artists.joinTo(this)
+			} else if (authors.length() > 0) {
+				authors.joinTo(this)
+			} else if (artists.length() > 0) {
+				artists.joinTo(this)
+			}
+		}
 		return manga.copy(
 			description = details.getStringOrNull("description"),
-			altTitle = details.getJSONArray("aliases").joinToString().nullIfEmpty(),
-			author = buildString {
-				val authors = details.getJSONArray("authors")
-				val artists = details.getJSONArray("artists")
-				if (authors.length() > 0 && artists.length() > 0) {
-					authors.joinTo(this, postfix = ", ")
-					artists.joinTo(this)
-				} else if (authors.length() > 0) {
-					authors.joinTo(this)
-				} else if (artists.length() > 0) {
-					artists.joinTo(this)
-				}
-			},
+			altTitles = details.getJSONArray("aliases").toStringSet(),
+			authors = setOf(author),
 			tags = details.getJSONArray("categories").mapTo(HashSet()) {
 				val name = it as String
 				MangaTag(name, name, source)
@@ -134,7 +135,7 @@ internal abstract class MangAdventureParser(
 			chapters = chapters?.optJSONArray("results")?.asTypedList<JSONObject>()?.mapChapters { _, it ->
 				MangaChapter(
 					id = generateUid(it.getLong("id")),
-					name = it.getString("full_title"),
+					title = it.getStringOrNull("full_title"),
 					number = it.getFloatOrDefault("number", 0f),
 					volume = it.getIntOrDefault("volume", 0),
 					url = it.getString("url"),
@@ -187,15 +188,15 @@ internal abstract class MangAdventureParser(
 			Manga(
 				id = generateUid(it.getString("slug")),
 				title = it.getString("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = path,
 				publicUrl = publicUrl,
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
+				contentRating = null,
 				coverUrl = it.getString("cover"),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		} ?: emptyList()
@@ -208,6 +209,5 @@ internal abstract class MangAdventureParser(
 	private val Manga.slug: String
 		get() = url.substring(8, url.length - 1)
 
-	protected suspend fun HttpUrl.Builder.get() =
-		webClient.httpGet(build()).body?.string()?.let(::JSONObject)
+	protected suspend fun HttpUrl.Builder.get() = webClient.httpGet(build()).parseJson()
 }

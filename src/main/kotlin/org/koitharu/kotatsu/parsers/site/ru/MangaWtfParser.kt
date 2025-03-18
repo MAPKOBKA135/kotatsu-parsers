@@ -7,8 +7,8 @@ import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.InternalParsersApi
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
@@ -18,7 +18,7 @@ import java.util.*
 @MangaSourceParser("MANGA_WTF", "MangaWtf", "ru")
 internal class MangaWtfParser(
 	context: MangaLoaderContext,
-) : PagedMangaParser(context, MangaParserSource.MANGA_WTF, pageSize = 20) {
+) : LegacyPagedMangaParser(context, MangaParserSource.MANGA_WTF, pageSize = 20) {
 
 	override val availableSortOrders: Set<SortOrder> =
 		EnumSet.of(
@@ -125,19 +125,19 @@ internal class MangaWtfParser(
 					.addPathSegment("books")
 					.addPathSegment(manga.url)
 			val jo = webClient.httpGet(url.build()).parseJson()
+			val isNsfwSource = jo.getStringOrNull("contentStatus").isNsfw()
 			Manga(
 				id = generateUid(jo.getString("id")),
 				title = jo.getJSONObject("name").getString("ru"),
-				altTitle = jo.getJSONObject("name").getStringOrNull("en"),
+				altTitles = setOfNotNull(jo.getJSONObject("name").getStringOrNull("en")),
 				url = jo.getString("id"),
 				publicUrl = "https://$domain/manga/${jo.getString("slug")}",
 				rating = jo.getFloatOrDefault("averageRating", -10f) / 10f,
-				isNsfw = jo.getStringOrNull("contentStatus").isNsfw(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				coverUrl = jo.getString("poster"),
 				tags = jo.getJSONArray("labels").mapJSONToSet { it.toMangaTag() },
 				state = jo.getStringOrNull("status")?.toMangaState(),
-				author =
-				jo.getJSONArray("relations").asTypedList<JSONObject>().firstNotNullOfOrNull {
+				authors = jo.getJSONArray("relations").asTypedList<JSONObject>().mapNotNullToSet {
 					if (it.getStringOrNull("type") == "AUTHOR") {
 						it.getJSONObject("publisher").getStringOrNull("name")
 					} else {
@@ -208,11 +208,7 @@ internal class MangaWtfParser(
 				val branchId = jo.getString("branchId")
 				MangaChapter(
 					id = generateUid(jo.getString("id")),
-					name =
-					jo.getStringOrNull("name") ?: buildString {
-						if (volume > 0) append("Том ").append(volume).append(' ')
-						if (number > 0) append("Глава ").append(number) else append("Без имени")
-					},
+					title = jo.getStringOrNull("name"),
 					number = number,
 					volume = volume,
 					url = jo.getString("id"),
@@ -256,19 +252,21 @@ internal class MangaWtfParser(
 			source = source,
 		)
 
-	private fun JSONObject.toManga() =
-		Manga(
+	private fun JSONObject.toManga(): Manga {
+		val isNsfwSource = getStringOrNull("contentStatus").isNsfw()
+		return Manga(
 			id = generateUid(getString("id")),
 			title = getJSONObject("name").getString("ru"),
-			altTitle = getJSONObject("name").getStringOrNull("en"),
+			altTitles = setOfNotNull(getJSONObject("name").getStringOrNull("en")),
 			url = getString("id"),
 			publicUrl = "https://$domain/manga/${getString("slug")}",
 			rating = getFloatOrDefault("averageRating", -10f) / 10f,
-			isNsfw = getStringOrNull("contentStatus").isNsfw(),
+			contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			coverUrl = getString("poster"),
 			tags = setOf(),
 			state = getStringOrNull("status")?.toMangaState(),
-			author = null,
+			authors = emptySet(),
 			source = source,
 		)
+	}
 }

@@ -5,8 +5,8 @@ import kotlinx.coroutines.coroutineScope
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.getBooleanOrDefault
@@ -17,7 +17,7 @@ internal abstract class LilianaParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 24,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -114,15 +114,15 @@ internal abstract class LilianaParser(
 			id = generateUid(href),
 			url = href,
 			publicUrl = href.toAbsoluteUrl(domain),
-			coverUrl = element.selectFirst("img")?.src().orEmpty(),
+			coverUrl = element.selectFirst("img")?.src(),
 			title = element.selectFirst(".text-center a")?.text().orEmpty(),
-			altTitle = null,
+			altTitles = emptySet(),
 			rating = RATING_UNKNOWN,
 			tags = emptySet(),
-			author = null,
+			authors = emptySet(),
 			state = null,
 			source = source,
-			isNsfw = isNsfwSource,
+			contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 		)
 	}
 
@@ -148,6 +148,9 @@ internal abstract class LilianaParser(
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val author = doc.selectFirst("div.y6x11p i.fas.fa-user + span.dt")?.textOrNull()?.takeUnless {
+			it.equals("updating", true)
+		}
 		return manga.copy(
 			description = doc.selectFirst("div#syn-target")?.html(),
 			largeCoverUrl = doc.selectFirst(".a1 > figure img")?.src(),
@@ -158,9 +161,7 @@ internal abstract class LilianaParser(
 					source = source,
 				)
 			},
-			author = doc.selectFirst("div.y6x11p i.fas.fa-user + span.dt")?.textOrNull()?.takeUnless {
-				it.equals("updating", true)
-			},
+			authors = setOfNotNull(author),
 			state = when (doc.selectFirst("div.y6x11p i.fas.fa-rss + span.dt")?.text()?.lowercase().orEmpty()) {
 				in ongoing -> MangaState.ONGOING
 				in finished -> MangaState.FINISHED
@@ -172,7 +173,7 @@ internal abstract class LilianaParser(
 				val href = element.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 				MangaChapter(
 					id = generateUid(href),
-					name = element.selectFirst("a")?.text() ?: "Chapter : ${i + 1f}",
+					title = element.selectFirst("a")?.textOrNull(),
 					number = i + 1f,
 					volume = 0,
 					url = href,

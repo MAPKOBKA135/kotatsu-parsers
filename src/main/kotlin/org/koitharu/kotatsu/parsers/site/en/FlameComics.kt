@@ -6,8 +6,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
 
 @MangaSourceParser("FLAMECOMICS", "FlameComics", "en")
 internal class FlameComics(context: MangaLoaderContext) :
-	SinglePageMangaParser(context, MangaParserSource.FLAMECOMICS) {
+	LegacySinglePageMangaParser(context, MangaParserSource.FLAMECOMICS) {
 
 	private val commonPrefix = suspendLazy(initializer = ::fetchCommonPrefix)
 
@@ -128,20 +128,21 @@ internal class FlameComics(context: MangaLoaderContext) :
 	private fun parseManga(jo: JSONObject): Manga {
 		val seriesId = jo.getLong("series_id")
 		val cover = jo.getStringOrNull("cover")
+		val author = jo.getStringOrNull("author")
 		return Manga(
 			id = generateUid(seriesId),
 			title = jo.getString("title"),
-			altTitle = jo.getStringOrNull("altTitles")?.let {
-				JSONArray(it).optString(0)
-			},
+			altTitles = jo.getStringOrNull("altTitles")?.let {
+				JSONArray(it).toStringSet()
+			}.orEmpty(),
 			url = seriesId.toString(),
 			publicUrl = "https://${domain}/series/$seriesId",
 			rating = RATING_UNKNOWN,
-			isNsfw = false,
+			contentRating = null,
 			coverUrl = if (cover != null) {
 				imageUrl(seriesId, cover, 256)
 			} else {
-				""
+				null
 			},
 			tags = jo.getStringOrNull("categories")?.let {
 				JSONArray(it).asTypedList<String>().mapToSet { tagName -> tagName.toMangaTag() }
@@ -153,9 +154,9 @@ internal class FlameComics(context: MangaLoaderContext) :
 				"Ongoing" -> MangaState.ONGOING
 				else -> null
 			},
-			author = jo.getStringOrNull("author"),
+			authors = setOfNotNull(author),
 			largeCoverUrl = if (cover != null) {
-				imageUrl(seriesId, cover, 640)
+				imageUrl(seriesId, cover, 720)
 			} else {
 				null
 			},
@@ -182,7 +183,7 @@ internal class FlameComics(context: MangaLoaderContext) :
 				val number = jo.getFloatOrDefault("chapter", 0f)
 				MangaChapter(
 					id = generateUid(longOf(seriesId.toInt(), chapterId.toInt())),
-					name = jo.getStringOrNull("name") ?: ("Chapter " + number.formatSimple()),
+					title = jo.getStringOrNull("name"),
 					number = number,
 					volume = 0,
 					url = seriesId.toString() + "?" + jo.getStringOrNull("token").orEmpty(),

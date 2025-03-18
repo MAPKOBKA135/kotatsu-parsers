@@ -7,8 +7,8 @@ import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -20,7 +20,7 @@ import java.util.*
 @Broken
 @MangaSourceParser("BLOGTRUYENVN", "BlogTruyen.vn (Unofficial)", "vi")
 internal class BlogTruyenVN(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.BLOGTRUYENVN, pageSize = 20) {
+	LegacyPagedMangaParser(context, MangaParserSource.BLOGTRUYENVN, pageSize = 20) {
 
 	override val configKeyDomain: ConfigKey.Domain
 		get() = ConfigKey.Domain("blogtruyenvn.org", "blogtruyenvn.com")
@@ -90,16 +90,16 @@ internal class BlogTruyenVN(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(relativeUrl),
 				title = linkTag.attr("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				description = el.selectFirst("p.al-j.break.line-height-15")?.text(),
 				url = relativeUrl,
 				publicUrl = relativeUrl.toAbsoluteUrl(domain),
 				coverUrl = linkTag.selectLast("img")?.src().orEmpty(),
 				source = source,
 				tags = tags ?: emptySet(),
-				isNsfw = false,
+				contentRating = null,
 				rating = RATING_UNKNOWN,
-				author = null,
+				authors = emptySet(),
 				state = null,
 			)
 		}
@@ -115,15 +115,15 @@ internal class BlogTruyenVN(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(relativeUrl),
 				title = a.text(),
-				altTitle = null,
-				description = mangaInfo.select("div.al-j.fs-12").text(),
+				altTitles = emptySet(),
+				description = mangaInfo.select("div.al-j.fs-12").textOrNull(),
 				url = relativeUrl,
 				publicUrl = relativeUrl.toAbsoluteUrl(domain),
-				coverUrl = mangaInfo.selectFirst("div > img.img")?.src().orEmpty(),
-				isNsfw = false,
+				coverUrl = mangaInfo.selectFirst("div > img.img")?.src(),
+				contentRating = null,
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
 			)
@@ -177,10 +177,11 @@ internal class BlogTruyenVN(context: MangaLoaderContext) :
 				tagMap[tagName]
 			}
 		}
+		val author = descriptionElement.selectFirst("p:contains(Tác giả) > a")?.textOrNull()
 
 		return manga.copy(
 			tags = tags ?: emptySet(),
-			author = descriptionElement.selectFirst("p:contains(Tác giả) > a")?.textOrNull(),
+			authors = setOfNotNull(author),
 			description = doc.selectFirst(".detail .content")?.html(),
 			chapters = parseChapterList(doc),
 			largeCoverUrl = doc.selectLast("div.thumbnail > img")?.src(),
@@ -204,7 +205,7 @@ internal class BlogTruyenVN(context: MangaLoaderContext) :
 			val uploadDate = dateFormat.tryParse(element.select("span.publishedDate").text())
 			MangaChapter(
 				id = generateUid(id),
-				name = name,
+				title = name,
 				number = index + 1f,
 				volume = 0,
 				url = relativeUrl,

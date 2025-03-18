@@ -4,8 +4,8 @@ import androidx.collection.ArrayMap
 import kotlinx.coroutines.coroutineScope
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
@@ -15,7 +15,7 @@ import java.util.*
 
 @MangaSourceParser("MANGAPARK", "MangaPark")
 internal class MangaPark(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.MANGAPARK, pageSize = 36) {
+	LegacyPagedMangaParser(context, MangaParserSource.MANGAPARK, pageSize = 36) {
 
 	override val configKeyDomain = ConfigKey.Domain(
 		"mangapark.net",
@@ -31,7 +31,7 @@ internal class MangaPark(context: MangaLoaderContext) :
 		"parkmanga.com",
 		"parkmanga.net",
 		"parkmanga.org",
-		"mpark.to"
+		"mpark.to",
 	)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -155,15 +155,15 @@ internal class MangaPark(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = div.selectFirst("h3")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirst("span.text-yellow-500")?.text()?.toFloatOrNull()?.div(10F) ?: RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -193,9 +193,10 @@ internal class MangaPark(context: MangaLoaderContext) :
 		val tags = selectTag.mapNotNullToSet { tagMap[it.text()] }
 		val nsfw = tags.any { t -> t.key == "hentai" || t.key == "adult" }
 		val dateFormat = SimpleDateFormat("dd/MM/yyyy", sourceLocale)
+		val author = doc.selectFirst("div[q:key=tz_4]")?.textOrNull()
 		manga.copy(
-			altTitle = doc.selectFirst("div[q:key=tz_2]")?.textOrNull(),
-			author = doc.selectFirst("div[q:key=tz_4]")?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst("div[q:key=tz_2]")?.textOrNull()),
+			authors = setOfNotNull(author),
 			description = doc.selectFirst("react-island[q:key=0a_9]")?.html(),
 			state = when (doc.selectFirst("span[q:key=Yn_5]")?.text()?.lowercase()) {
 				"ongoing" -> MangaState.ONGOING
@@ -212,7 +213,7 @@ internal class MangaPark(context: MangaLoaderContext) :
 				val dateText = div.selectFirst("span[q:key=Ee_0]")?.text()
 				MangaChapter(
 					id = generateUid(href),
-					name = a.text(),
+					title = a.textOrNull(),
 					number = i + 1f,
 					volume = 0,
 					url = href,

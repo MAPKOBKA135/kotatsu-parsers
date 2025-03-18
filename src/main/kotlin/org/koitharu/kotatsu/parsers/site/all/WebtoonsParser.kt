@@ -8,9 +8,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
@@ -24,7 +24,7 @@ import javax.crypto.spec.SecretKeySpec
 internal abstract class WebtoonsParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
-) : MangaParser(context, source) {
+) : LegacyMangaParser(context, source) {
 
 	private val signer by lazy {
 		WebtoonsUrlSigner("gUtPzJFZch4ZyAGviiyH94P99lQ3pFdRTwpJWDlSGFfwgpr6ses5ALOxWHOIT7R1")
@@ -97,7 +97,7 @@ internal abstract class WebtoonsParser(
 		episodes.mapChapters { i, jo ->
 			MangaChapter(
 				id = generateUid("$titleNo-$i"),
-				name = jo.getString("episodeTitle"),
+				title = jo.getStringOrNull("episodeTitle"),
 				number = jo.getInt("episodeSeq").toFloat(),
 				volume = 0,
 				url = "$titleNo-${jo.get("episodeNo")}",
@@ -123,19 +123,21 @@ internal abstract class WebtoonsParser(
 		val chapters = chaptersDeferred.await()
 		makeRequest("/lineWebtoon/webtoon/titleInfo.json?titleNo=${titleNo}&anyServiceStatus=false").getJSONObject("titleInfo")
 			.let { jo ->
+				val isNsfwSource = jo.getBooleanOrDefault("ageGradeNotice", isNsfwSource)
+				val author = jo.getStringOrNull("writingAuthorName")
 				MangaWebtoon(
 					Manga(
 						id = generateUid(titleNo),
 						title = jo.getString("title"),
-						altTitle = null,
+						altTitles = emptySet(),
 						url = "$titleNo",
 						publicUrl = "https://$domain/$languageCode/originals/a/list?title_no=${titleNo}",
 						rating = jo.getFloatOrDefault("starScoreAverage", -10f) / 10f,
-						isNsfw = jo.getBooleanOrDefault("ageGradeNotice", isNsfwSource),
+						contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 						coverUrl = jo.getString("thumbnail").toAbsoluteUrl(staticDomain),
 						largeCoverUrl = jo.getStringOrNull("thumbnailVertical")?.toAbsoluteUrl(staticDomain),
 						tags = setOf(parseTag(jo.getJSONObject("genreInfo"))),
-						author = jo.getStringOrNull("writingAuthorName"),
+						authors = setOfNotNull(author),
 						description = jo.getString("synopsis"),
 						// I don't think the API provides this info,
 						state = null,
@@ -158,6 +160,8 @@ internal abstract class WebtoonsParser(
 		makeRequest("/lineWebtoon/webtoon/titleList.json?").getJSONObject("titleList").getJSONArray("titles")
 			.mapJSON { jo ->
 				val titleNo = jo.getLong("titleNo")
+				val isNsfwSource = jo.getBooleanOrDefault("ageGradeNotice", isNsfwSource)
+				val author = jo.getStringOrNull("writingAuthorName")
 				MangaWebtoon(
 					Manga(
 						id = generateUid(titleNo),
@@ -165,9 +169,9 @@ internal abstract class WebtoonsParser(
 						publicUrl = "https://$domain/$languageCode/originals/a/list?title_no=$titleNo",
 						title = jo.getString("title"),
 						coverUrl = jo.getString("thumbnail").toAbsoluteUrl(staticDomain),
-						altTitle = null,
-						author = jo.getStringOrNull("writingAuthorName"),
-						isNsfw = jo.getBooleanOrDefault("ageGradeNotice", isNsfwSource),
+						altTitles = emptySet(),
+						authors = setOfNotNull(author),
+						contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 						rating = jo.getFloatOrDefault("starScoreAverage", -10f) / 10f,
 						tags = setOfNotNull(allGenreCache.get()[jo.getString("representGenre")]),
 						description = jo.getString("synopsis"),
@@ -196,19 +200,20 @@ internal abstract class WebtoonsParser(
 				makeRequest("/lineWebtoon/webtoon/searchWebtoon?query=${filter.query.urlEncoded()}").getJSONObject("webtoonSearch")
 					.getJSONArray("titleList").mapJSON { jo ->
 						val titleNo = jo.getLong("titleNo")
+						val author = jo.getStringOrNull("writingAuthorName")
 						MangaWebtoon(
 							Manga(
 								id = generateUid(titleNo),
 								title = jo.getString("title"),
-								altTitle = null,
+								altTitles = emptySet(),
 								url = titleNo.toString(),
 								publicUrl = "https://$domain/$languageCode/originals/a/list?title_no=$titleNo",
 								rating = RATING_UNKNOWN,
-								isNsfw = isNsfwSource,
+								contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 								coverUrl = jo.getString("thumbnail").toAbsoluteUrl(staticDomain),
 								largeCoverUrl = null,
 								tags = emptySet(),
-								author = jo.getStringOrNull("writingAuthorName"),
+								authors = setOfNotNull(author),
 								description = null,
 								state = null,
 								source = source,

@@ -2,25 +2,17 @@ package org.koitharu.kotatsu.parsers.site.vi
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("TRUYENQQ", "TruyenQQ", "vi")
-internal class TruyenQQ(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.TRUYENQQ, 42) {
+internal class TruyenQQ(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.TRUYENQQ, 42) {
 
 	override val configKeyDomain = ConfigKey.Domain("truyenqqto.com")
-
-	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
-		super.onCreateConfig(keys)
-		keys.add(userAgentKey)
-	}
-
-	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
 
 	override val availableSortOrders: Set<SortOrder> =
 		EnumSet.of(
@@ -130,15 +122,15 @@ internal class TruyenQQ(context: MangaLoaderContext) : PagedMangaParser(context,
 			Manga(
 				id = generateUid(href),
 				title = li.selectFirst(".book_name")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				coverUrl = li.selectFirst("img")?.src().orEmpty(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -158,8 +150,9 @@ internal class TruyenQQ(context: MangaLoaderContext) : PagedMangaParser(context,
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH)
+		val author = doc.selectFirst("li.author a")?.text()
 		return manga.copy(
-			altTitle = doc.selectFirst("h2.other-name")?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst("h2.other-name")?.textOrNull()),
 			tags = doc.select("ul.list01 li").mapToSet {
 				val key = it.attr("href").substringAfterLast("-").substringBeforeLast(".")
 				MangaTag(
@@ -173,7 +166,7 @@ internal class TruyenQQ(context: MangaLoaderContext) : PagedMangaParser(context,
 				"Hoàn Thành" -> MangaState.FINISHED
 				else -> null
 			},
-			author = doc.selectFirst("li.author a")?.text(),
+			authors = setOfNotNull(author),
 			description = doc.selectFirst(".story-detail-info")?.html(),
 			chapters = doc.select("div.list_chapter div.works-chapter-item").mapChapters(reversed = true) { i, div ->
 				val a = div.selectFirstOrThrow("a")
@@ -182,7 +175,7 @@ internal class TruyenQQ(context: MangaLoaderContext) : PagedMangaParser(context,
 				val dateText = div.selectFirst(".time-chap")?.text()
 				MangaChapter(
 					id = generateUid(href),
-					name = name,
+					title = name,
 					number = i + 1f,
 					volume = 0,
 					url = href,

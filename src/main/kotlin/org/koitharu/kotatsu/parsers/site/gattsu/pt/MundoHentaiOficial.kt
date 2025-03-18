@@ -3,12 +3,12 @@ package org.koitharu.kotatsu.parsers.site.gattsu.pt
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.model.ContentType
-import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.model.MangaParserSource
-import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
+import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.site.gattsu.GattsuParser
-import org.koitharu.kotatsu.parsers.util.*
+import org.koitharu.kotatsu.parsers.util.attrAsAbsoluteUrl
+import org.koitharu.kotatsu.parsers.util.generateUid
+import org.koitharu.kotatsu.parsers.util.selectLastOrThrow
+import org.koitharu.kotatsu.parsers.util.src
 
 @MangaSourceParser("MUNDOHENTAIOFICIAL", "MundoHentaiOficial", "pt", ContentType.HENTAI)
 internal class MundoHentaiOficial(context: MangaLoaderContext) :
@@ -29,14 +29,14 @@ internal class MundoHentaiOficial(context: MangaLoaderContext) :
 				url = href,
 				publicUrl = href,
 				title = li.selectLastOrThrow(".thumb-titulo, .video-titulo").text(),
-				coverUrl = li.selectFirst("img")?.src().orEmpty(),
-				altTitle = null,
+				coverUrl = li.selectFirst("img")?.src(),
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}

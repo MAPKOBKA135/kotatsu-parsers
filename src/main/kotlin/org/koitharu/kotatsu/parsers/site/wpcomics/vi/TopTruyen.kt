@@ -12,13 +12,11 @@ import java.util.*
 
 @MangaSourceParser("TOPTRUYEN", "TopTruyen", "vi")
 internal class TopTruyen(context: MangaLoaderContext) :
-	WpComicsParser(context, MangaParserSource.TOPTRUYEN, "www.toptruyen369.net", 36) {
+	WpComicsParser(context, MangaParserSource.TOPTRUYEN, "www.toptruyentv.pro", 36) {
 
 	override val configKeyDomain = ConfigKey.Domain(
-		"www.toptruyen369.net", // Main domain
-		"www.toptruyen28.net",
-		"www.toptruyento.pro",
-		"www.toptruyenpro1.com",
+		"www.toptruyentv.pro",
+		"www.toptruyentv2.pro"
 	)
 
 	override val datePattern = "dd/MM/yyyy"
@@ -103,13 +101,13 @@ internal class TopTruyen(context: MangaLoaderContext) :
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
 				coverUrl = div.selectFirst("div.image-item img")?.findImageUrl().orEmpty(),
 				title = div.selectFirst("h3 a")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = mangaTags,
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -149,12 +147,12 @@ internal class TopTruyen(context: MangaLoaderContext) :
 		}
 
 		return manga.copy(
-			author = author,
+			authors = setOfNotNull(author),
 			description = description,
 			state = state,
 			tags = tags,
 			chapters = getChapters(doc),
-			altTitle = altTitle,
+			altTitles = setOfNotNull(altTitle),
 		)
 	}
 
@@ -168,7 +166,7 @@ internal class TopTruyen(context: MangaLoaderContext) :
 			val timeText = timeElement?.text()
 			MangaChapter(
 				id = generateUid(href),
-				name = name,
+				title = name,
 				number = number,
 				url = href,
 				uploadDate = parseChapterDate(timeText),
@@ -224,7 +222,14 @@ internal class TopTruyen(context: MangaLoaderContext) :
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		return doc.select("div.page-chapter img").mapNotNull { img ->
-			val url = img.src()?.toRelativeUrl(domain) ?: return@mapNotNull null
+			val url = img.attrAsRelativeUrlOrNull("data-original")
+				?: img.attrAsRelativeUrlOrNull("src")
+				?: return@mapNotNull null
+			
+			if (url.contains("toptruyentv.jpg") || url.contains("follow.png")) { // Remove ads images
+				return@mapNotNull null
+			}
+			
 			MangaPage(
 				id = generateUid(url),
 				url = url,

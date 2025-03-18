@@ -7,8 +7,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
@@ -20,7 +20,7 @@ private const val CHAPTERS_LIMIT = 99999
 
 @MangaSourceParser("COMICK_FUN", "ComicK")
 internal class ComickFunParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.COMICK_FUN, 20) {
+	LegacyPagedMangaParser(context, MangaParserSource.COMICK_FUN, 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("comick.io")
 
@@ -152,12 +152,12 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(slug),
 				title = jo.getString("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = slug,
 				publicUrl = "https://$domain/comic/$slug",
 				rating = jo.getDoubleOrDefault("rating", -10.0).toFloat() / 10f,
-				isNsfw = false,
-				coverUrl = jo.getString("cover_url"),
+				contentRating = null,
+				coverUrl = jo.getStringOrNull("cover_url"),
 				largeCoverUrl = null,
 				description = jo.getStringOrNull("desc"),
 				tags = jo.selectGenres(tagsMap),
@@ -168,7 +168,7 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 					4 -> MangaState.PAUSED
 					else -> null
 				},
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -179,16 +179,16 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 		val url = "https://api.$domain/comic/${manga.url}?tachiyomi=true"
 		val jo = webClient.httpGet(url).parseJson()
 		val comic = jo.getJSONObject("comic")
-		var alt = ""
-		comic.getJSONArray("md_titles").mapJSON { alt += it.getString("title") + " - " }
+		val alt = comic.getJSONArray("md_titles").asTypedList<JSONObject>().mapNotNullToSet {
+			it.getStringOrNull("title")
+		}
+		val authors = jo.getJSONArray("artists").mapJSONNotNullToSet { it.getStringOrNull("name") }
 		return manga.copy(
-			altTitle = alt.ifEmpty { comic.getStringOrNull("title") }?.nullIfEmpty(),
-			contentRating = if (jo.getBooleanOrDefault("matureContent", false)
-				|| comic.getBooleanOrDefault("hentai", false)
-			) {
-				ContentRating.ADULT
-			} else {
-				ContentRating.SAFE
+			altTitles = alt,
+			contentRating = when {
+				comic.getBooleanOrDefault("hentai", false) -> ContentRating.ADULT
+				jo.getBooleanOrDefault("matureContent", false) -> ContentRating.SUGGESTIVE
+				else -> ContentRating.SAFE
 			},
 			description = comic.getStringOrNull("parsed") ?: comic.getStringOrNull("desc"),
 			tags = manga.tags + comic.getJSONArray("md_comic_md_genres").mapJSONToSet {
@@ -199,7 +199,7 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 					source = source,
 				)
 			},
-			author = jo.getJSONArray("artists").optJSONObject(0)?.getStringOrNull("name"),
+			authors = authors,
 			chapters = getChapters(comic.getString("hid")),
 		)
 	}
@@ -224,13 +224,7 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 			}
 			MangaChapter(
 				id = generateUid(jo.getLong("id")),
-				name = buildString {
-					if (vol > 0) {
-						append("Vol ").append(vol).append(' ')
-					}
-					append("Chap ").append(chap.formatSimple())
-					jo.getStringOrNull("title")?.let { append(": ").append(it) }
-				},
+				title = jo.getStringOrNull("title"),
 				number = chap,
 				volume = vol,
 				url = jo.getString("hid"),

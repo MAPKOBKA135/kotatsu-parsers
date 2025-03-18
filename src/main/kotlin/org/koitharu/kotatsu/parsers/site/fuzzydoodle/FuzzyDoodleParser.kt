@@ -7,8 +7,8 @@ import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -20,7 +20,7 @@ internal abstract class FuzzyDoodleParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 24,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -147,15 +147,15 @@ internal abstract class FuzzyDoodleParser(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = div.selectFirst("h2")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -181,9 +181,10 @@ internal abstract class FuzzyDoodleParser(
 				}
 			}
 		}
+		val author = doc.selectFirst(selectAuthor)?.textOrNull()
 
 		manga.copy(
-			altTitle = doc.selectLast(selectAltTitle)?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectLast(selectAltTitle)?.textOrNull()),
 			state = when (doc.selectFirst(selectState)?.text()?.lowercase().orEmpty()) {
 				in ongoing -> MangaState.ONGOING
 				in finished -> MangaState.FINISHED
@@ -191,7 +192,7 @@ internal abstract class FuzzyDoodleParser(
 				in paused -> MangaState.PAUSED
 				else -> null
 			},
-			author = doc.selectFirst(selectAuthor)?.textOrNull(),
+			authors = setOfNotNull(author),
 			description = doc.select(selectDescription).html(),
 			tags = doc.select(selectTagManga).mapToSet {
 				val key = it.attr("href").substringAfterLast('=')
@@ -239,7 +240,7 @@ internal abstract class FuzzyDoodleParser(
 				val chapterN = href.substringAfterLast('/').replace("-", ".").replace("[^0-9.]".toRegex(), "").toFloat()
 				MangaChapter(
 					id = generateUid(href),
-					name = name,
+					title = name,
 					number = chapterN,
 					volume = 0,
 					url = href,

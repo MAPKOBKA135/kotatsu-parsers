@@ -87,13 +87,13 @@ internal class XoxoComics(context: MangaLoaderContext) :
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
 				coverUrl = div.selectFirst("img")?.src().orEmpty(),
 				title = div.selectFirstOrThrow("h3").text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -128,7 +128,7 @@ internal class XoxoComics(context: MangaLoaderContext) :
 				else -> null
 			}
 		}
-		val aut = doc.body().select(selectAut).textOrNull()
+		val author = doc.body().select(selectAut).textOrNull()
 		manga.copy(
 			tags = doc.body().select(selectTag).mapToSet { a ->
 				MangaTag(
@@ -138,7 +138,7 @@ internal class XoxoComics(context: MangaLoaderContext) :
 				)
 			},
 			description = desc,
-			author = aut,
+			authors = setOfNotNull(author),
 			state = state,
 			chapters = chaptersDeferred.await(),
 		)
@@ -160,7 +160,7 @@ internal class XoxoComics(context: MangaLoaderContext) :
 					val dateText = li.selectFirst("div.col-xs-3")?.text()
 					MangaChapter(
 						id = generateUid(href),
-						name = a.text(),
+						title = a.text(),
 						number = 0f,
 						volume = 0,
 						url = href,

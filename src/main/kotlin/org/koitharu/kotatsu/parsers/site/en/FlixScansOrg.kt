@@ -4,8 +4,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
 import org.json.JSONObject
-import org.koitharu.kotatsu.parsers.*
+import org.koitharu.kotatsu.parsers.Broken
+import org.koitharu.kotatsu.parsers.ErrorMessages
+import org.koitharu.kotatsu.parsers.MangaLoaderContext
+import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.asTypedList
@@ -16,7 +20,7 @@ import java.util.*
 @Broken
 @MangaSourceParser("FLIXSCANSORG", "FlixScans.org", "en")
 internal class FlixScansOrg(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.FLIXSCANSORG, 18) {
+	LegacyPagedMangaParser(context, MangaParserSource.FLIXSCANSORG, 18) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
 	override val configKeyDomain = ConfigKey.Domain("flixscans.org")
@@ -87,11 +91,11 @@ internal class FlixScansOrg(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(href),
 				title = j.getString("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				coverUrl = cover,
 				tags = emptySet(),
 				state = when (j.getString("status")) {
@@ -101,7 +105,7 @@ internal class FlixScansOrg(context: MangaLoaderContext) :
 					"droped" -> MangaState.ABANDONED
 					else -> null
 				},
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -171,7 +175,7 @@ internal class FlixScansOrg(context: MangaLoaderContext) :
 			MangaChapter(
 				id = generateUid(url),
 				url = url,
-				name = j.getString("slug").replace('-', ' '),
+				title = j.getString("slug").replace('-', ' '),
 				number = i + 1f,
 				volume = 0,
 				branch = null,

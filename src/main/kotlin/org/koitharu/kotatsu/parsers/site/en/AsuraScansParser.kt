@@ -6,8 +6,8 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.asTypedList
@@ -18,7 +18,7 @@ import java.util.*
 
 @MangaSourceParser("ASURASCANS", "AsuraComic", "en")
 internal class AsuraScansParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.ASURASCANS, pageSize = 30) {
+	LegacyPagedMangaParser(context, MangaParserSource.ASURASCANS, pageSize = 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("asuracomic.net")
 
@@ -111,12 +111,12 @@ internal class AsuraScansParser(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = a.selectFirst("img")?.src().orEmpty(),
+				coverUrl = a.selectFirst("img")?.src(),
 				title = a.selectFirst("div.block > span.block")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = a.selectFirst("div.block  label.ml-1")?.text()?.toFloatOrNull()?.div(10f) ?: RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = when (a.selectLast("span.status")?.text()) {
 					"Ongoing" -> MangaState.ONGOING
 					"Completed" -> MangaState.FINISHED
@@ -126,7 +126,7 @@ internal class AsuraScansParser(context: MangaLoaderContext) :
 					else -> null
 				},
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -159,10 +159,11 @@ internal class AsuraScansParser(context: MangaLoaderContext) :
 		val tagMap = getOrCreateTagMap()
 		val selectTag = doc.select("div[class^=space] > div.flex > button.text-white")
 		val tags = selectTag.mapNotNullToSet { tagMap[it.text()] }
+		val author = doc.selectFirst("div.grid > div:has(h3:eq(0):containsOwn(Author)) > h3:eq(1)")?.text().orEmpty()
 		return manga.copy(
 			description = doc.selectFirst("span.font-medium.text-sm")?.text().orEmpty(),
 			tags = tags,
-			author = doc.selectFirst("div.grid > div:has(h3:eq(0):containsOwn(Author)) > h3:eq(1)")?.text().orEmpty(),
+			authors = setOf(author),
 			chapters = doc.select("div.scrollbar-thumb-themecolor > div.group").mapChapters(reversed = true) { i, div ->
 				val a = div.selectLastOrThrow("a")
 				val urlRelative = "/series/" + a.attrAsRelativeUrl("href")
@@ -171,7 +172,7 @@ internal class AsuraScansParser(context: MangaLoaderContext) :
 				val cleanDate = date.replace(regexDate, "$1")
 				MangaChapter(
 					id = generateUid(url),
-					name = div.selectFirst("h3")?.text() ?: "Chapter : ${i + 1f}",
+					title = div.selectFirst("h3")?.textOrNull(),
 					number = i + 1f,
 					volume = 0,
 					url = url,

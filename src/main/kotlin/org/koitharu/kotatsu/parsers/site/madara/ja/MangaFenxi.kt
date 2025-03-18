@@ -4,21 +4,10 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.model.MangaParserSource
-import org.koitharu.kotatsu.parsers.model.MangaState
-import org.koitharu.kotatsu.parsers.model.MangaTag
+import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
-import org.koitharu.kotatsu.parsers.util.attrAsRelativeUrlOrNull
-import org.koitharu.kotatsu.parsers.util.domain
-import org.koitharu.kotatsu.parsers.util.generateUid
-import org.koitharu.kotatsu.parsers.util.host
-import org.koitharu.kotatsu.parsers.util.mapNotNullToSet
-import org.koitharu.kotatsu.parsers.util.parseFailed
-import org.koitharu.kotatsu.parsers.util.removeSuffix
-import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
-import org.koitharu.kotatsu.parsers.util.toTitleCase
-import java.util.Locale
+import org.koitharu.kotatsu.parsers.util.*
+import java.util.*
 
 @Broken
 @MangaSourceParser("MANGAFENXI", "MangaFenxi", "ja")
@@ -33,14 +22,15 @@ internal class MangaFenxi(context: MangaLoaderContext) :
 		}.map { div ->
 			val href = div.selectFirst("a")?.attrAsRelativeUrlOrNull("href") ?: div.parseFailed("Link not found")
 			val summary = div.selectFirst(".tab-summary") ?: div.selectFirst(".item-summary")
+			val author = summary?.selectFirst(".mg_author")?.selectFirst("a")?.ownText()
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.attr("src")?.replace("-193x278", "").orEmpty(),
+				coverUrl = div.selectFirst("img")?.attr("src")?.replace("-193x278", ""),
 				title = (summary?.selectFirst("h3") ?: summary?.selectFirst("h4")
 				?: div.selectFirst(".manga-name") ?: div.selectFirst(".post-title"))?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirst("span.total_votes")?.ownText()?.toFloatOrNull()?.div(5f) ?: -1f,
 				tags = summary?.selectFirst(".mg_genres")?.select("a")?.mapNotNullToSet { a ->
 					MangaTag(
@@ -49,7 +39,7 @@ internal class MangaFenxi(context: MangaLoaderContext) :
 						source = source,
 					)
 				}.orEmpty(),
-				author = summary?.selectFirst(".mg_author")?.selectFirst("a")?.ownText(),
+				authors = setOfNotNull(author),
 				state = when (
 					summary?.selectFirst(".mg_status")
 						?.selectFirst(".summary-content")
@@ -64,7 +54,7 @@ internal class MangaFenxi(context: MangaLoaderContext) :
 					else -> null
 				},
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}

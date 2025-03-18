@@ -5,7 +5,7 @@ import kotlinx.coroutines.runInterruptible
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParser
+import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 
@@ -14,19 +14,20 @@ public class LinkResolver internal constructor(
 	public val link: HttpUrl,
 ) {
 
-	private val source = suspendLazy(initializer = ::resolveSource)
+	private val source = suspendLazy(Dispatchers.Default, ::resolveSource)
 
 	public suspend fun getSource(): MangaParserSource? = source.get()
 
 	public suspend fun getManga(): Manga? {
-		val parser = context.newParserInstance(source.get() ?: return null)
+		val parser = context.newParserInstance(source.get() ?: return null) as? LegacyMangaParser
+			?: return null
 		return parser.resolveLink(this, link) ?: resolveManga(parser)
 	}
 
 	private suspend fun resolveSource(): MangaParserSource? = runInterruptible(Dispatchers.Default) {
 		val domains = setOfNotNull(link.host, link.topPrivateDomain())
 		for (s in MangaParserSource.entries) {
-			val parser = context.newParserInstance(s)
+			val parser = context.newParserInstance(s) as LegacyMangaParser
 			for (d in parser.configKeyDomain.presetValues) {
 				if (d in domains) {
 					return@runInterruptible s
@@ -37,7 +38,7 @@ public class LinkResolver internal constructor(
 	}
 
 	internal suspend fun resolveManga(
-		parser: MangaParser,
+		parser: LegacyMangaParser,
 		url: String = link.toString().toRelativeUrl(link.host),
 		id: Long = parser.generateUid(url),
 		title: String = STUB_TITLE,
@@ -46,7 +47,7 @@ public class LinkResolver internal constructor(
 		Manga(
 			id = id,
 			title = title,
-			altTitle = null,
+			altTitles = emptySet(),
 			url = url,
 			publicUrl = link.toString(),
 			rating = RATING_UNKNOWN,
@@ -54,7 +55,7 @@ public class LinkResolver internal constructor(
 			coverUrl = "",
 			tags = emptySet(),
 			state = null,
-			author = null,
+			authors = emptySet(),
 			largeCoverUrl = null,
 			description = null,
 			chapters = null,
@@ -62,15 +63,15 @@ public class LinkResolver internal constructor(
 		),
 	)
 
-	private suspend fun resolveBySeed(parser: MangaParser, s: Manga): Manga? {
+	private suspend fun resolveBySeed(parser: LegacyMangaParser, s: Manga): Manga? {
 		val seed = parser.getDetails(s)
 		if (!parser.filterCapabilities.isSearchSupported) {
 			return seed.takeUnless { it.chapters.isNullOrEmpty() }
 		}
 		val query = when {
 			seed.title != STUB_TITLE && seed.title.isNotEmpty() -> seed.title
-			!seed.altTitle.isNullOrEmpty() -> seed.altTitle
-			!seed.author.isNullOrEmpty() -> seed.author
+			seed.altTitles.isNotEmpty() -> seed.altTitles.first()
+			seed.authors.isNotEmpty() -> seed.authors.first()
 			else -> return seed // unfortunately we do not know a real manga title so unable to find it
 		}
 		val resolved = runCatchingCancellable {
@@ -91,12 +92,12 @@ public class LinkResolver internal constructor(
 			resolved.copy(
 				chapters = seed.chapters ?: resolved.chapters,
 				description = seed.description ?: resolved.description,
-				author = seed.author ?: resolved.author,
+				authors = seed.authors.ifEmpty { resolved.authors },
 				tags = seed.tags + resolved.tags,
 				state = seed.state ?: resolved.state,
 				coverUrl = seed.coverUrl ?: resolved.coverUrl,
 				largeCoverUrl = seed.largeCoverUrl ?: resolved.largeCoverUrl,
-				altTitle = seed.altTitle ?: resolved.altTitle,
+				altTitles = seed.altTitles + resolved.altTitles,
 			)
 		}
 	}

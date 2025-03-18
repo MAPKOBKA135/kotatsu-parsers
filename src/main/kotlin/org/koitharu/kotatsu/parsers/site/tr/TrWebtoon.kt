@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.tr
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("TRWEBTOON", "TrWebtoon", "tr")
 internal class TrWebtoon(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.TRWEBTOON, pageSize = 21) {
+	LegacyPagedMangaParser(context, MangaParserSource.TRWEBTOON, pageSize = 21) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("trwebtoon.com")
 
@@ -106,18 +106,18 @@ internal class TrWebtoon(context: MangaLoaderContext) :
 				publicUrl = href.toAbsoluteUrl(domain),
 				coverUrl = li.selectFirst("img")?.src().orEmpty(),
 				title = li.selectFirst(".table-responsive a")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = li.selectFirst(".row .col-xl-4 .mt-2 .my-1 .text-muted")?.text()?.substringBefore("/")
 					?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = when (doc.selectLast(".row .col-xl-4 .mt-2 .rounded-pill")?.text()) {
 					"Devam Ediyor", "Güncel" -> MangaState.ONGOING
 					"Tamamlandı" -> MangaState.FINISHED
 					else -> null
 				},
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -131,17 +131,17 @@ internal class TrWebtoon(context: MangaLoaderContext) :
 				publicUrl = href.toAbsoluteUrl(domain),
 				coverUrl = li.selectFirst(".figure img")?.src().orEmpty(),
 				title = li.selectFirst(".title")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = when (doc.selectFirst("d-inline .badge")?.text()) {
 					"Devam Ediyor", "Güncel" -> MangaState.ONGOING
 					"Tamamlandı" -> MangaState.FINISHED
 					else -> null
 				},
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -179,7 +179,7 @@ internal class TrWebtoon(context: MangaLoaderContext) :
 				val url = tr.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 				MangaChapter(
 					id = generateUid(url),
-					name = tr.selectFirst("a")?.text() ?: "Chapter : ${i + 1f}",
+					title = tr.selectFirst("a")?.textOrNull(),
 					number = i + 1f,
 					volume = 0,
 					url = url,

@@ -8,8 +8,8 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.ErrorMessages
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
@@ -19,7 +19,7 @@ internal abstract class GalleryAdultsParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 20,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -109,15 +109,15 @@ internal abstract class GalleryAdultsParser(
 			Manga(
 				id = generateUid(href),
 				title = div.select(selectGalleryTitle).text().cleanupTitle(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfwSource,
-				coverUrl = div.selectFirst(selectGalleryImg)?.src().orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = div.selectFirst(selectGalleryImg)?.src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -165,14 +165,15 @@ internal abstract class GalleryAdultsParser(
 		val branch = doc.select(selectLanguageChapter).joinToString(separator = " / ") {
 			it.html().substringBefore("<")
 		}
+		val author = doc.selectFirst(selectAuthor)?.html()?.substringBefore("<span")
 		return manga.copy(
 			tags = tag.orEmpty(),
 			title = doc.selectFirst(selectTitle)?.textOrNull()?.cleanupTitle() ?: manga.title,
-			author = doc.selectFirst(selectAuthor)?.html()?.substringBefore("<span"),
+			authors = setOfNotNull(author),
 			chapters = listOf(
 				MangaChapter(
 					id = manga.id,
-					name = manga.title,
+					title = manga.title,
 					number = 1f,
 					volume = 0,
 					url = urlChapters,

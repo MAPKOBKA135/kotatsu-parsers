@@ -20,10 +20,10 @@ internal class NHentaiXxxParser(context: MangaLoaderContext) :
 	override val pathTagUrl = "/tags/popular?page="
 	override val selectTitle = "h1"
 	override val selectTags = "div.tags_items"
-	override val selectTag = ".tags:contains(Tags:)"
-	override val selectAuthor = ".tags:contains(Artists:) span.tag_name"
+	override val selectTag = ".tags:contains(Tags)"
+	override val selectAuthor = ".tags:contains(Artists) span.tag_name"
 	override val selectLanguageChapter =
-		".tags:contains(Languages:) a:not([href=\"/language/translated/\"]) span.tag_name"
+		".tags:contains(Languages) a:not([href=\"/language/translated/\"]) span.tag_name"
 	override val idImg = "fimg"
 
 	override val availableSortOrders: Set<SortOrder> =
@@ -66,7 +66,7 @@ internal class NHentaiXxxParser(context: MangaLoaderContext) :
 						joiner.add(tag.title)
 					}
 
-					if(!filter.query.isNullOrEmpty()) {
+					if (!filter.query.isNullOrEmpty()) {
 						joiner.add(filter.query.urlEncoded())
 					}
 					append(joiner.complete())
@@ -93,27 +93,40 @@ internal class NHentaiXxxParser(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(href),
 				title = div.select(selectGalleryTitle).text().cleanupTitle(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
 				contentRating = ContentRating.ADULT,
-				coverUrl = div.selectFirstOrThrow(selectGalleryImg).src().orEmpty(),
+				coverUrl = div.selectFirstOrThrow(selectGalleryImg).src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				largeCoverUrl = null,
-				description = "N/A",
+				description = null,
 				chapters = null,
 				source = source,
 			)
 		}
 	}
 
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+		val totalPages = doc.selectFirstOrThrow(selectTotalPage).text().toInt()
+		val firstPageUrl = doc.requireElementById(idImg).requireSrc()
+		return (1..totalPages).map {
+			val url = replacePageNumber(firstPageUrl, it)
+			MangaPage(
+				id = generateUid(url),
+				url = url,
+				preview = null,
+				source = source,
+			)
+		}
+	}
+
 	override suspend fun getPageUrl(page: MangaPage): String {
-		val doc = webClient.httpGet(page.url.toAbsoluteUrl(domain)).parseHtml()
-		val root = doc.body()
-		return root.requireElementById(idImg).requireSrc()
+		return page.url
 	}
 
 	override fun Element.parseTags() = select("a").mapToSet {
@@ -124,5 +137,16 @@ internal class NHentaiXxxParser(context: MangaLoaderContext) :
 			title = name.toTitleCase(sourceLocale),
 			source = source,
 		)
+	}
+
+	private fun replacePageNumber(url: String, newPageNumber: Int): String {
+		val lastSegment = url.substringAfterLast("/")
+		val extension = lastSegment.substringAfterLast(".", "")
+
+		return if (extension.isNotEmpty()) {
+			url.substringBeforeLast("/") + "/$newPageNumber.$extension"
+		} else {
+			url.substringBeforeLast("/") + "/$newPageNumber"
+		}
 	}
 }

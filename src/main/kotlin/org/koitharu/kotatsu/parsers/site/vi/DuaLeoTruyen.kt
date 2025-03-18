@@ -1,9 +1,10 @@
 package org.koitharu.kotatsu.parsers.site.vi
 
+import okhttp3.internal.closeQuietly
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -12,10 +13,10 @@ import java.util.*
 
 @MangaSourceParser("DUALEOTRUYEN", "Dưa Leo Truyện", "vi", type = ContentType.HENTAI)
 internal class DuaLeoTruyen(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.DUALEOTRUYEN, 60) {
+	LegacyPagedMangaParser(context, MangaParserSource.DUALEOTRUYEN, 60) {
 
 	override val configKeyDomain: ConfigKey.Domain
-		get() = ConfigKey.Domain("dualeotruyenxxy.com")
+		get() = ConfigKey.Domain("dualeotruyenbotz.com")
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
 
@@ -72,15 +73,15 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(href),
 				title = li.selectFirst(".name")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				coverUrl = li.selectFirst("img")?.absUrl("data-src").orEmpty(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -89,9 +90,10 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH)
+		val author = doc.selectFirst(".info-item:has(.fa-user)")?.textOrNull()?.removePrefix("Tác giả: ")
 
 		return manga.copy(
-			altTitle = doc.selectFirst(".box_info_right h2")?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst(".box_info_right h2")?.textOrNull()),
 			tags = doc.select("ul.list-tag-story li a").mapToSet {
 				MangaTag(
 					key = it.attr("href").substringAfterLast('/').substringBefore('.'),
@@ -104,7 +106,7 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 				"Full" -> MangaState.FINISHED
 				else -> null
 			},
-			author = doc.selectFirst(".info-item:has(.fa-user)")?.textOrNull()?.removePrefix("Tác giả: "),
+			authors = setOfNotNull(author),
 			description = doc.selectFirst(".story-detail-info")?.html(),
 			chapters = doc.select(".list-chapters .chapter-item").mapChapters(reversed = true) { i, div ->
 				val a = div.selectFirstOrThrow(".chap_name a")
@@ -112,7 +114,7 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 				val dateText = div.selectFirst(".chap_update")?.text()
 				MangaChapter(
 					id = generateUid(href),
-					name = a.text(),
+					title = a.text(),
 					number = i + 1f,
 					url = href,
 					scanlator = null,
@@ -139,7 +141,7 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 					"truyen" to comicsId,
 					"chap" to chapterId,
 				),
-			)
+			).closeQuietly()
 		}
 
 		return doc.select(".content_view_chap img").mapIndexed { i, img ->

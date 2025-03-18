@@ -6,6 +6,12 @@ import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
+import org.koitharu.kotatsu.parsers.model.search.MangaSearchQuery
+import org.koitharu.kotatsu.parsers.model.search.MangaSearchQueryCapabilities
+import org.koitharu.kotatsu.parsers.model.search.QueryCriteria.Include
+import org.koitharu.kotatsu.parsers.model.search.QueryCriteria.Match
+import org.koitharu.kotatsu.parsers.model.search.SearchCapability
+import org.koitharu.kotatsu.parsers.model.search.SearchableField.*
 import org.koitharu.kotatsu.parsers.site.mangabox.MangaboxParser
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
@@ -31,80 +37,101 @@ internal class Mangairo(context: MangaLoaderContext) :
 		SortOrder.POPULARITY,
 		SortOrder.NEWEST,
 	)
-	override val filterCapabilities: MangaListFilterCapabilities
-		get() = super.filterCapabilities.copy(
-			isTagsExclusionSupported = false,
-			isMultipleTagsSupported = false,
-			isSearchWithFiltersSupported = false,
+
+	override val searchQueryCapabilities: MangaSearchQueryCapabilities
+		get() = MangaSearchQueryCapabilities(
+			SearchCapability(
+				field = TAG,
+				criteriaTypes = setOf(Include::class),
+				isMultiple = false,
+			),
+			SearchCapability(
+				field = TITLE_NAME,
+				criteriaTypes = setOf(Match::class),
+				isMultiple = false,
+				isExclusive = true,
+			),
+			SearchCapability(
+				field = STATE,
+				criteriaTypes = setOf(Include::class),
+				isMultiple = false,
+			),
 		)
 
-	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+	private fun Any?.toQueryParam(): String = when (this) {
+		is String -> replace(" ", "_").urlEncoded()
+		is MangaTag -> key
+		is MangaState -> when (this) {
+			MangaState.ONGOING -> "ongoing"
+			MangaState.FINISHED -> "completed"
+			else -> "all"
+		}
+
+		is SortOrder -> when (this) {
+			SortOrder.POPULARITY -> "topview"
+			SortOrder.UPDATED -> "latest"
+			SortOrder.NEWEST -> "newest"
+			else -> "latest"
+		}
+
+		else -> this.toString().urlEncoded()
+	}
+
+	override suspend fun getListPage(query: MangaSearchQuery, page: Int): List<Manga> {
+		var titleSearchUrl: String? = null
+		var category = "all"
+		var state = "all"
+
 		val url = buildString {
-			append("https://")
-			append(domain)
-			when {
+			append("https://${domain}${listUrl}")
+			append("/type-${(query.order ?: defaultSortOrder).toQueryParam()}")
 
-				!filter.query.isNullOrEmpty() -> {
-					append(searchUrl)
-					append(filter.query.urlEncoded())
-					append("?page=")
-				}
-
-				else -> {
-					append(listUrl)
-					append("/type-")
-					when (order) {
-						SortOrder.POPULARITY -> append("topview")
-						SortOrder.UPDATED -> append("latest")
-						SortOrder.NEWEST -> append("newest")
-						else -> append("latest")
-					}
-
-					append("/ctg-")
-					if (filter.tags.isNotEmpty()) {
-						filter.tags.oneOrThrowIfMany()?.let {
-							append(it.key)
+			query.criteria.forEach { criterion ->
+				when (criterion) {
+					is Include<*> -> {
+						when (criterion.field) {
+							TAG -> category = criterion.values.first().toQueryParam()
+							STATE -> state = criterion.values.first().toQueryParam()
+							else -> Unit
 						}
-					} else {
-						append("all")
 					}
 
-					append("/state-")
-					if (filter.states.isNotEmpty()) {
-						filter.states.oneOrThrowIfMany()?.let {
-							append(
-								when (it) {
-									MangaState.ONGOING -> "ongoing"
-									MangaState.FINISHED -> "completed"
-									else -> "all"
-								},
-							)
+					is Match<*> -> {
+						if (criterion.field == TITLE_NAME) {
+							criterion.value.toQueryParam().takeIf { it.isNotBlank() }?.let { titleName ->
+								titleSearchUrl = "https://${domain}${searchUrl}${titleName}/" +
+									"?page=${query.offset}"
+							}
 						}
-					} else {
-						append("all")
 					}
 
-					append("/page-")
+					else -> {
+						// Not supported
+					}
 				}
 			}
-			append(page.toString())
+			append("/ctg-$category")
+			append("/state-$state")
+			append("/page-$page")
 		}
-		val doc = webClient.httpGet(url).parseHtml()
+
+		val doc = webClient.httpGet(titleSearchUrl ?: url).parseHtml()
+
 		return doc.select("div.story-item").map { div ->
 			val href = div.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = (div.selectFirst("h2")?.text() ?: div.selectFirst("h3")?.text()).orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (source.contentType == ContentType.HENTAI) ContentRating.ADULT else ContentRating.SAFE,
 			)
 		}
 	}
@@ -137,7 +164,7 @@ internal class Mangairo(context: MangaLoaderContext) :
 		}
 
 		val alt = doc.body().select(selectAlt).text().replace("Alternative : ", "").nullIfEmpty()
-		val aut = doc.body().select(selectAut).eachText().joinToString().nullIfEmpty()
+		val author = doc.body().select(selectAut).eachText().joinToString().nullIfEmpty()
 		manga.copy(
 			tags = doc.body().select(selectTag).mapToSet { a ->
 				MangaTag(
@@ -148,8 +175,8 @@ internal class Mangairo(context: MangaLoaderContext) :
 				)
 			},
 			description = desc,
-			altTitle = alt,
-			author = aut,
+			altTitles = setOfNotNull(alt),
+			authors = setOfNotNull(author),
 			state = state,
 			chapters = chaptersDeferred.await(),
 		)

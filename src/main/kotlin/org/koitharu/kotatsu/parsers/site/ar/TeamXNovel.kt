@@ -6,15 +6,16 @@ import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("TEAMXNOVEL", "TeamXNovel", "ar")
-internal class TeamXNovel(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.TEAMXNOVEL, 10) {
+internal class TeamXNovel(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.TEAMXNOVEL, 10) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED, SortOrder.POPULARITY)
 
@@ -104,12 +105,12 @@ internal class TeamXNovel(context: MangaLoaderContext) : PagedMangaParser(contex
 			Manga(
 				id = generateUid(href),
 				title = div.select(".tt, h3").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
-				coverUrl = div.selectFirstOrThrow("img").src()?.replace("thumbnail_", "").orEmpty(),
+				contentRating = null,
+				coverUrl = div.selectFirstOrThrow("img").src()?.replace("thumbnail_", ""),
 				tags = emptySet(),
 				state = when (div.selectFirst(".status")?.text()) {
 					"مستمرة" -> MangaState.ONGOING
@@ -117,7 +118,7 @@ internal class TeamXNovel(context: MangaLoaderContext) : PagedMangaParser(contex
 					"متوقف" -> MangaState.ABANDONED
 					else -> null
 				},
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -194,7 +195,7 @@ internal class TeamXNovel(context: MangaLoaderContext) : PagedMangaParser(contex
 				val url = li.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 				MangaChapter(
 					id = generateUid(url),
-					name = li.selectFirstOrThrow(".epl-title").text(),
+					title = li.selectFirstOrThrow(".epl-title").text(),
 					number = url.substringAfterLast('/').toFloatOrNull() ?: 0f,
 					volume = 0,
 					url = url,

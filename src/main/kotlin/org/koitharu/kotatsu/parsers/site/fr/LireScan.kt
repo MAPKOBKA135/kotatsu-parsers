@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.fr
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -12,7 +12,7 @@ import java.util.*
 
 @Broken
 @MangaSourceParser("LIRESCAN", "LireScan", "fr")
-internal class LireScan(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LIRESCAN, 20) {
+internal class LireScan(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.LIRESCAN, 20) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
 
@@ -68,15 +68,15 @@ internal class LireScan(context: MangaLoaderContext) : PagedMangaParser(context,
 			Manga(
 				id = generateUid(href),
 				title = div.select(".item-poster__title").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = div.selectFirstOrThrow(".item__rating").ownText().toFloatOrNull()?.div(10f) ?: RATING_UNKNOWN,
-				isNsfw = false,
+				contentRating = null,
 				coverUrl = div.selectFirstOrThrow("img").attrAsAbsoluteUrl("src"),
 				tags = setOf(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -85,9 +85,14 @@ internal class LireScan(context: MangaLoaderContext) : PagedMangaParser(context,
 	override suspend fun getDetails(manga: Manga): Manga {
 		val root = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.FRANCE)
+		val author = root.select("ul.pmovie__list li:contains(Artist(s):)").text()
+			.replace("Artist(s):", "")
+			.nullIfEmpty()
 		return manga.copy(
-			altTitle = root.select("ul.pmovie__list li:contains(Nom Alternatif:)").text()
-				.replace("Nom Alternatif:", "").nullIfEmpty(),
+			altTitles = setOfNotNull(
+				root.select("ul.pmovie__list li:contains(Nom Alternatif:)").text()
+					.replace("Nom Alternatif:", "").nullIfEmpty(),
+			),
 			state = when (root.select("ul.pmovie__list li:contains(Status:)").text()) {
 				"Status: OnGoing", "Status: En cours" -> MangaState.ONGOING
 				"Status: Fini" -> MangaState.FINISHED
@@ -101,9 +106,7 @@ internal class LireScan(context: MangaLoaderContext) : PagedMangaParser(context,
 						source = source,
 					)
 				},
-			author = root.select("ul.pmovie__list li:contains(Artist(s):)").text()
-				.replace("Artist(s):", "")
-				.nullIfEmpty(),
+			authors = setOfNotNull(author),
 			description = root.selectFirst("div.pmovie__text")?.html(),
 			chapters = root.select("ul li div.chapter")
 				.mapChapters(reversed = true) { i, div ->
@@ -113,7 +116,7 @@ internal class LireScan(context: MangaLoaderContext) : PagedMangaParser(context,
 					val dateText = div.select("p").last()?.text()
 					MangaChapter(
 						id = generateUid(href),
-						name = name,
+						title = name,
 						number = i.toFloat(),
 						volume = 0,
 						url = href,

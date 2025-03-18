@@ -8,8 +8,8 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
@@ -23,7 +23,7 @@ internal abstract class MadaraParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 12,
-) : PagedMangaParser(context, source, pageSize), MangaParserAuthProvider {
+) : LegacyPagedMangaParser(context, source, pageSize), MangaParserAuthProvider {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -460,14 +460,15 @@ internal abstract class MadaraParser(
 		}.map { div ->
 			val href = div.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 			val summary = div.selectFirst(".tab-summary") ?: div.selectFirst(".item-summary")
+			val author = summary?.selectFirst(".mg_author")?.selectFirst("a")?.ownText()
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = (summary?.selectFirst("h3, h4") ?: div.selectFirst(".manga-name, .post-title"))?.text()
 					.orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirst("span.total_votes")?.ownText()?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
 				tags = summary?.selectFirst(".mg_genres")?.select("a")?.mapNotNullToSet { a ->
 					MangaTag(
@@ -476,7 +477,7 @@ internal abstract class MadaraParser(
 						source = source,
 					)
 				}.orEmpty(),
-				author = summary?.selectFirst(".mg_author")?.selectFirst("a")?.ownText(),
+				authors = setOfNotNull(author),
 				state = when (
 					summary?.selectFirst(".mg_status")
 						?.selectFirst(".summary-content")
@@ -491,7 +492,7 @@ internal abstract class MadaraParser(
 					else -> null
 				},
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -574,10 +575,10 @@ internal abstract class MadaraParser(
 				)
 			},
 			description = desc,
-			altTitle = alt,
+			altTitles = setOfNotNull(alt),
 			state = state,
 			chapters = chaptersDeferred.await(),
-			contentRating = if (doc.selectFirst(".adult-confirm") != null) {
+			contentRating = if (doc.selectFirst(".adult-confirm") != null || isNsfwSource) {
 				ContentRating.ADULT
 			} else {
 				ContentRating.SAFE
@@ -599,7 +600,7 @@ internal abstract class MadaraParser(
 			val name = a.selectFirst("p")?.text() ?: a.ownText()
 			MangaChapter(
 				id = generateUid(href),
-				name = name,
+				title = name,
 				number = i + 1f,
 				volume = 0,
 				url = link,
@@ -634,7 +635,7 @@ internal abstract class MadaraParser(
 			MangaChapter(
 				id = generateUid(href),
 				url = link,
-				name = name,
+				title = name,
 				number = i + 1f,
 				volume = 0,
 				branch = null,
@@ -658,14 +659,14 @@ internal abstract class MadaraParser(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(a.host ?: domain),
-				altTitle = null,
+				altTitles = emptySet(),
 				title = div.selectFirstOrThrow(".widget-title").text(),
-				author = null,
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				authors = emptySet(),
+				coverUrl = div.selectFirst("img")?.src(),
 				tags = emptySet(),
 				rating = RATING_UNKNOWN,
 				state = null,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}

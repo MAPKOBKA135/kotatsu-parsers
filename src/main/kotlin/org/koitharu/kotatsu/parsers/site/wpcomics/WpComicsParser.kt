@@ -10,8 +10,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -24,7 +24,11 @@ internal abstract class WpComicsParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 48,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
+
+	companion object {
+		const val netDomain = "nettruyenmoe.com"
+	}
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -155,19 +159,20 @@ internal abstract class WpComicsParser(
 			val tagsElement =
 				tooltipElement?.selectFirst("div.message_main > p:contains(Thể loại)")?.ownText().orEmpty()
 			val mangaTags = tagsElement.split(',').mapNotNullToSet { tagMap[it.trim()] }
+			val author = tooltipElement?.selectFirst("div.message_main > p:contains(Tác giả)")?.ownText()
 			Manga(
 				id = generateUid(slug),
 				title = item.selectFirst("div.box_tootip div.title, h3 a")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = absUrl.toRelativeUrl(domain),
 				publicUrl = absUrl,
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
+				contentRating = null,
 				coverUrl = item.selectFirst("div.image a img")?.findImageUrl().orEmpty(),
 				largeCoverUrl = null,
 				tags = mangaTags,
 				state = mangaState,
-				author = tooltipElement?.selectFirst("div.message_main > p:contains(Tác giả)")?.ownText(),
+				authors = setOfNotNull(author),
 				description = tooltipElement?.selectFirst("div.box_text")?.text(),
 				chapters = null,
 				source = source,
@@ -215,10 +220,11 @@ internal abstract class WpComicsParser(
 		val tagMap = getOrCreateTagMap()
 		val tagsElement = doc.select("li.kind p.col-xs-8 a")
 		val mangaTags = tagsElement.mapNotNullToSet { tagMap[it.text()] }
+		val author = doc.body().select(selectAut).textOrNull()
 		manga.copy(
 			description = doc.selectFirst(selectDesc)?.html(),
-			altTitle = doc.selectFirst("h2.other-name")?.textOrNull(),
-			author = doc.body().select(selectAut).textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst("h2.other-name")?.textOrNull()),
+			authors = setOfNotNull(author),
 			state = doc.selectFirst(selectState)?.let {
 				when (it.text()) {
 					in ongoing -> MangaState.ONGOING
@@ -248,7 +254,7 @@ internal abstract class WpComicsParser(
 			}
 			MangaChapter(
 				id = generateUid(href),
-				name = a.text(),
+				title = a.text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

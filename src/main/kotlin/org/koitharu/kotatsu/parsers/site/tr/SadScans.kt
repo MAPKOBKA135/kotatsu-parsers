@@ -2,15 +2,16 @@ package org.koitharu.kotatsu.parsers.site.tr
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("SADSCANS", "SadScans", "tr")
-internal class SadScans(context: MangaLoaderContext) : SinglePageMangaParser(context, MangaParserSource.SADSCANS) {
+internal class SadScans(context: MangaLoaderContext) :
+	LegacySinglePageMangaParser(context, MangaParserSource.SADSCANS) {
 
 	override val configKeyDomain = ConfigKey.Domain("sadscans.com")
 
@@ -46,15 +47,15 @@ internal class SadScans(context: MangaLoaderContext) : SinglePageMangaParser(con
 			Manga(
 				id = generateUid(href),
 				title = div.selectFirstOrThrow("h2").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
+				contentRating = null,
 				coverUrl = div.selectFirstOrThrow("img").src()?.toAbsoluteUrl(domain).orEmpty(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -63,6 +64,7 @@ internal class SadScans(context: MangaLoaderContext) : SinglePageMangaParser(con
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val dateFormat = SimpleDateFormat("dd MMM, yy", Locale.ENGLISH)
+		val author = doc.selectLast(".author span")?.textOrNull()
 		return manga.copy(
 			state = when (doc.select(".status span").last()?.text()) {
 				"Devam ediyor" -> MangaState.ONGOING
@@ -70,7 +72,7 @@ internal class SadScans(context: MangaLoaderContext) : SinglePageMangaParser(con
 				else -> null
 			},
 			tags = emptySet(),
-			author = doc.selectLast(".author span")?.textOrNull(),
+			authors = setOfNotNull(author),
 			description = doc.selectFirstOrThrow(".summary").html(),
 			chapters = doc.select(".chap-section .chap")
 				.mapChapters(reversed = true) { i, div ->
@@ -78,7 +80,7 @@ internal class SadScans(context: MangaLoaderContext) : SinglePageMangaParser(con
 					val url = "/" + a.attrAsRelativeUrl("href")
 					MangaChapter(
 						id = generateUid(url),
-						name = a.text(),
+						title = a.text(),
 						number = i + 1f,
 						volume = 0,
 						url = url,

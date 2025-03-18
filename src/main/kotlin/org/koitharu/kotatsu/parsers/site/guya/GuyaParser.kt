@@ -2,17 +2,20 @@ package org.koitharu.kotatsu.parsers.site.guya
 
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.util.*
+import org.koitharu.kotatsu.parsers.util.generateUid
+import org.koitharu.kotatsu.parsers.util.parseJson
+import org.koitharu.kotatsu.parsers.util.removeSuffix
+import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
 import java.util.*
 
 internal abstract class GuyaParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	domain: String,
-) : SinglePageMangaParser(context, source) {
+) : LegacySinglePageMangaParser(context, source) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -60,19 +63,20 @@ internal abstract class GuyaParser(
 	private fun addManga(j: JSONObject, name: String): Manga {
 		val url = "https://$domain/read/manga/" + j.getString("slug")
 		val apiUrl = "https://$domain/api/series/" + j.getString("slug")
+		val author = j.getString("author")
 		return Manga(
 			id = generateUid(apiUrl),
 			url = apiUrl,
 			publicUrl = url,
 			title = name,
 			coverUrl = j.getString("cover").toAbsoluteUrl(domain),
-			altTitle = null,
+			altTitles = emptySet(),
 			rating = RATING_UNKNOWN,
 			tags = emptySet(),
 			description = j.getString("description"),
 			state = null,
-			author = j.getString("author"),
-			isNsfw = isNsfwSource,
+			authors = setOfNotNull(author),
+			contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			source = source,
 		)
 	}
@@ -91,7 +95,7 @@ internal abstract class GuyaParser(
 			chapters.add(
 				MangaChapter(
 					id = generateUid(url),
-					name = chapter.getString("title"),
+					title = chapter.getString("title"),
 					number = i.toFloat(),
 					volume = 0,
 					url = url,

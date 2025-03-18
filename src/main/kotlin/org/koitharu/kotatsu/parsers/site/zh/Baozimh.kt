@@ -5,8 +5,8 @@ import org.json.JSONArray
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -16,7 +16,7 @@ import java.util.*
 
 @MangaSourceParser("BAOZIMH", "Baozimh", "zh")
 internal class Baozimh(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.BAOZIMH, pageSize = 36) {
+	LegacyPagedMangaParser(context, MangaParserSource.BAOZIMH, pageSize = 36) {
 
 	override val configKeyDomain = ConfigKey.Domain("www.baozimh.com")
 
@@ -111,19 +111,20 @@ internal class Baozimh(context: MangaLoaderContext) :
 	private fun parseMangaList(json: JSONArray): List<Manga> {
 		return json.mapJSON { j ->
 			val href = "https://$domain/comic/" + j.getString("comic_id")
+			val author = j.getString("author")
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href,
 				coverUrl = "https://static-tw${domain.removePrefix("www")}/cover/" + j.getString("topic_img"),
 				title = j.getString("name"),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = j.getString("author"),
+				authors = setOfNotNull(author),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -137,13 +138,13 @@ internal class Baozimh(context: MangaLoaderContext) :
 				publicUrl = href,
 				coverUrl = div.selectFirst("amp-img")?.src().orEmpty(),
 				title = div.selectFirst(".comics-card__title h3")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -192,7 +193,7 @@ internal class Baozimh(context: MangaLoaderContext) :
 				val url = a.attrAsRelativeUrl("href").toAbsoluteUrl(domain)
 				MangaChapter(
 					id = generateUid(url),
-					name = a.selectFirst("span")?.text() ?: "Chapter ${i + 1f}",
+					title = a.selectFirst("span")?.textOrNull(),
 					number = i + 1f,
 					volume = 0,
 					url = url,

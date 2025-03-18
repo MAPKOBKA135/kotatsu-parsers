@@ -3,14 +3,11 @@ package org.koitharu.kotatsu.parsers.site.heancms
 import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
-import org.koitharu.kotatsu.parsers.util.json.asTypedList
-import org.koitharu.kotatsu.parsers.util.json.getFloatOrDefault
-import org.koitharu.kotatsu.parsers.util.json.mapJSON
-import org.koitharu.kotatsu.parsers.util.json.unescapeJson
+import org.koitharu.kotatsu.parsers.util.json.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -19,7 +16,7 @@ internal abstract class HeanCms(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 20,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -112,7 +109,6 @@ internal abstract class HeanCms(
 	private fun parseMangaList(response: JSONObject): List<Manga> {
 		return response.getJSONArray("data").mapJSON { it ->
 			val id = it.getLong("id")
-			val url = "/comic/${it.getString("series_slug")}"
 			val publicUrl = "/series/${it.getString("series_slug")}"
 			val title = it.getString("title")
 			val cover = if (it.getString("thumbnail").startsWith("https://")) {
@@ -122,14 +118,14 @@ internal abstract class HeanCms(
 			}
 
 			Manga(
-				id = id,
-				url = url,
+				id = generateUid(id),
+				url = id.toString(),
 				title = title,
-				altTitle = it.getString("alternative_names").takeIf { it.isNotBlank() },
+				altTitles = setOfNotNull(it.getString("alternative_names").takeIf { it.isNotBlank() }),
 				publicUrl = publicUrl.toAbsoluteUrl(domain),
 				description = it.getString("description"),
 				rating = it.getFloatOrDefault("rating", RATING_UNKNOWN) / 5f,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				coverUrl = cover,
 				tags = emptySet(),
 				state = when (it.getString("status")) {
@@ -139,7 +135,7 @@ internal abstract class HeanCms(
 					"Hiatus" -> MangaState.PAUSED
 					else -> null
 				},
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -148,7 +144,7 @@ internal abstract class HeanCms(
 	protected open val datePattern = "yyyy-MM-dd"
 
 	override suspend fun getDetails(manga: Manga): Manga {
-		val seriesId = manga.id
+		val seriesId = manga.url.toLongOrNull() ?: manga.id // backward compatibility
 		val url = "https://$apiPath/chapter/query?page=1&perPage=9999&series_id=$seriesId"
 		val response = webClient.httpGet(url).parseJson()
 		val data = response.getJSONArray("data").asTypedList<JSONObject>()
@@ -158,8 +154,8 @@ internal abstract class HeanCms(
 				val chapterUrl =
 					"/series/${it.getJSONObject("series").getString("series_slug")}/${it.getString("chapter_slug")}"
 				MangaChapter(
-					id = it.getLong("id"),
-					name = it.getString("chapter_name"),
+					id = generateUid(it.getLong("id")),
+					title = it.getString("chapter_name"),
 					number = i + 1f,
 					volume = 0,
 					url = chapterUrl,
@@ -200,13 +196,13 @@ internal abstract class HeanCms(
 			?.let { "[$it]" }
 			?: return emptySet()
 
-		return JSONArray(tags).mapJSON {
+		return JSONArray(tags).mapJSONToSet {
 			MangaTag(
 				key = it.getInt("id").toString(),
 				title = it.getString("name").toTitleCase(sourceLocale),
 				source = source,
 			)
-		}.toSet()
+		}
 	}
 
 }

@@ -1,7 +1,11 @@
 package org.koitharu.kotatsu.parsers.site.pt
 
-import org.koitharu.kotatsu.parsers.*
+import org.koitharu.kotatsu.parsers.Broken
+import org.koitharu.kotatsu.parsers.ErrorMessages
+import org.koitharu.kotatsu.parsers.MangaLoaderContext
+import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -9,7 +13,7 @@ import java.util.*
 
 @Broken
 @MangaSourceParser("LERMANGA", "LerManga", "pt")
-internal class LerManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LERMANGA, 24) {
+internal class LerManga(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.LERMANGA, 24) {
 
 	override val configKeyDomain = ConfigKey.Domain("lermanga.org")
 
@@ -83,19 +87,20 @@ internal class LerManga(context: MangaLoaderContext) : PagedMangaParser(context,
 		return doc.select(".tab-content .flw-item").map { div ->
 			val a = div.selectFirstOrThrow("a.film-poster-ahref")
 			val href = a.attrAsAbsoluteUrl("href")
+			val isNsfwSource = div.selectFirst(".tick-itemadult") != null
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href,
 				title = div.selectLastOrThrow("h3.film-name").text(),
-				coverUrl = div.selectFirst("img.film-poster-img")?.src().orEmpty(),
-				altTitle = null,
+				coverUrl = div.selectFirst("img.film-poster-img")?.src(),
+				altTitles = emptySet(),
 				rating = div.selectFirst(".item__rating")?.ownText()?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = div.selectFirst(".tick-itemadult") != null,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -134,7 +139,7 @@ internal class LerManga(context: MangaLoaderContext) : PagedMangaParser(context,
 				val href = a.attrAsAbsoluteUrl("href")
 				MangaChapter(
 					id = generateUid(href),
-					name = a.text(),
+					title = a.text(),
 					number = i + 1f,
 					volume = 0,
 					url = href,

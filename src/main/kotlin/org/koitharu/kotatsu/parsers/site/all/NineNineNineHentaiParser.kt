@@ -8,8 +8,8 @@ import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.asTypedList
@@ -23,7 +23,7 @@ import java.util.*
 @Broken
 @MangaSourceParser("NINENINENINEHENTAI", "AnimeH", type = ContentType.HENTAI)
 internal class NineNineNineHentaiParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.NINENINENINEHENTAI, PAGE_SIZE), Interceptor {
+	LegacyPagedMangaParser(context, MangaParserSource.NINENINENINEHENTAI, PAGE_SIZE), Interceptor {
 
 	override val configKeyDomain = ConfigKey.Domain("animeh.to")
 
@@ -200,13 +200,13 @@ internal class NineNineNineHentaiParser(context: MangaLoaderContext) :
 		Manga(
 			id = generateUid(id),
 			title = name.replace(shortenTitleRegex, "").trim(),
-			altTitle = name,
+			altTitles = setOf(name),
 			coverUrl = when {
 				cover?.startsWith("http") == true -> cover
-				cover == null -> ""
+				cover == null -> null
 				else -> "https://${cdnHost.get()}/$cover"
 			},
-			author = null,
+			authors = emptySet(),
 			contentRating = ContentRating.ADULT,
 			url = id,
 			publicUrl = "/hchapter/$id".toAbsoluteUrl(domain),
@@ -264,12 +264,13 @@ internal class NineNineNineHentaiParser(context: MangaLoaderContext) :
 				type = it.getStringOrNull("tagType"),
 			)
 		}
+		val author = tags?.filter { it.type == "artist" }?.joinToString { it.name.toCamelCase() }?.nullIfEmpty()
 		return manga.copy(
 			title = name.replace(shortenTitleRegex, "").trim(),
-			altTitle = name,
+			altTitles = setOf(name),
 			coverUrl = cover.first,
 			largeCoverUrl = cover.second,
-			author = tags?.filter { it.type == "artist" }?.joinToString { it.name.toCamelCase() }?.nullIfEmpty(),
+			authors = setOfNotNull(author),
 			contentRating = ContentRating.ADULT,
 			tags = tags?.mapToSet {
 				MangaTag(
@@ -283,7 +284,7 @@ internal class NineNineNineHentaiParser(context: MangaLoaderContext) :
 			chapters = listOf(
 				MangaChapter(
 					id = generateUid(id),
-					name = name,
+					title = name,
 					number = 1f,
 					volume = 0,
 					url = id,

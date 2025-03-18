@@ -13,12 +13,13 @@ import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
 import org.koitharu.kotatsu.parsers.exception.TooManyRequestExceptions
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
+import java.text.SimpleDateFormat
 import java.util.*
 import java.util.Collections.emptyList
 import java.util.concurrent.TimeUnit
@@ -30,7 +31,7 @@ private val TAG_PREFIXES = arrayOf("male:", "female:", "other:")
 @MangaSourceParser("EXHENTAI", "ExHentai", type = ContentType.HENTAI)
 internal class ExHentaiParser(
 	context: MangaLoaderContext,
-) : PagedMangaParser(context, MangaParserSource.EXHENTAI, pageSize = 25), MangaParserAuthProvider, Interceptor {
+) : LegacyPagedMangaParser(context, MangaParserSource.EXHENTAI, pageSize = 25), MangaParserAuthProvider, Interceptor {
 
 	override val availableSortOrders: Set<SortOrder> = setOf(SortOrder.NEWEST)
 
@@ -54,6 +55,7 @@ internal class ExHentaiParser(
 			isTagsExclusionSupported = true,
 			isSearchSupported = true,
 			isSearchWithFiltersSupported = true,
+			isAuthorSearchSupported = true,
 		)
 
 	override val isAuthorized: Boolean
@@ -165,19 +167,24 @@ internal class ExHentaiParser(
 			val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
 			val href = a.attrAsRelativeUrl("href")
 			val tagsDiv = gLink.nextElementSibling() ?: gLink.parseFailed("tags div not found")
+			val rawTitle = gLink.text()
+			val author = tagsDiv.getElementsContainingOwnText("artist:").first()
+				?.nextElementSibling()?.textOrNull()
 			Manga(
 				id = generateUid(href),
-				title = gLink.text().cleanupTitle(),
-				altTitle = null,
+				title = rawTitle.cleanupTitle(),
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = a.absUrl("href"),
 				rating = td2.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
-				isNsfw = true,
-				coverUrl = td1.selectFirst("img")?.absUrl("src").orEmpty(),
+				contentRating = ContentRating.ADULT,
+				coverUrl = td1.selectFirst("img")?.attrAsAbsoluteUrlOrNull("src"),
 				tags = tagsDiv.parseTags(),
-				state = null,
-				author = tagsDiv.getElementsContainingOwnText("artist:").first()
-					?.nextElementSibling()?.text(),
+				state = when {
+					rawTitle.contains("(ongoing)", ignoreCase = true) -> MangaState.ONGOING
+					else -> null
+				},
+				authors = setOfNotNull(author),
 				source = source,
 			)
 		}
@@ -190,14 +197,23 @@ internal class ExHentaiParser(
 		val title = root.getElementById("gd2")
 		val tagList = root.getElementById("taglist")
 		val tabs = doc.body().selectFirst("table.ptt")?.selectFirst("tr")
-		val lang = root.getElementById("gd3")
+		val gd3 = root.getElementById("gd3")
+		val lang = gd3
 			?.selectFirst("tr:contains(Language)")
 			?.selectFirst(".gdt2")?.ownTextOrNull()
+		val uploadDate = gd3
+			?.selectFirst("tr:contains(Posted)")
+			?.selectFirst(".gdt2")?.ownTextOrNull()
+			.let { SimpleDateFormat("yyyy-MM-dd HH:mm", sourceLocale).tryParse(it) }
+		val uploader = gd3
+			?.getElementsByAttributeValueContaining("href", "/uploader/")
+			?.firstOrNull()
+			?.ownTextOrNull()
 		val tags = tagList?.parseTags().orEmpty()
 
 		return manga.copy(
 			title = title?.getElementById("gn")?.text()?.cleanupTitle() ?: manga.title,
-			altTitle = (title?.getElementById("gj")?.text()?.cleanupTitle() ?: manga.altTitle)?.nullIfEmpty(),
+			altTitles = setOfNotNull(title?.getElementById("gj")?.text()?.cleanupTitle()?.nullIfEmpty()),
 			publicUrl = doc.baseUri().ifEmpty { manga.publicUrl },
 			rating = root.getElementById("rating_label")?.text()
 				?.substringAfterLast(' ')
@@ -219,13 +235,13 @@ internal class ExHentaiParser(
 					val url = "${manga.url}?p=${i - 1}"
 					chapters += MangaChapter(
 						id = generateUid(url),
-						name = "${manga.title} #$i",
+						title = null,
 						number = i.toFloat(),
 						volume = 0,
 						url = url,
-						uploadDate = 0L,
+						uploadDate = uploadDate,
 						source = source,
-						scanlator = null,
+						scanlator = uploader,
 						branch = lang,
 					)
 				}
@@ -288,7 +304,7 @@ internal class ExHentaiParser(
 	override fun intercept(chain: Interceptor.Chain): Response {
 		val response = chain.proceed(chain.request())
 		if (response.headersContentLength() <= 256) {
-			val text = response.peekBody(256).string()
+			val text = response.peekBody(256).use { it.string() }
 			if (text.contains("IP address has been temporarily banned", ignoreCase = true)) {
 				val hours = Regex("([0-9]+) hours?").find(text)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0
 				val minutes = Regex("([0-9]+) minutes?").find(text)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0
@@ -413,6 +429,11 @@ internal class ExHentaiParser(
 		locale?.let { lc ->
 			joiner.add("language:\"")
 			joiner.append(lc.toLanguagePath())
+			joiner.append("\"$")
+		}
+		if (!author.isNullOrEmpty()) {
+			joiner.add("artist:\"")
+			joiner.append(author)
 			joiner.append("\"$")
 		}
 		return joiner.complete().nullIfEmpty()

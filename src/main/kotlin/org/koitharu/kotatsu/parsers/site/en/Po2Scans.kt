@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.en
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -12,7 +12,8 @@ import java.util.*
 
 @Broken
 @MangaSourceParser("PO2SCANS", "Po2Scans", "en")
-internal class Po2Scans(context: MangaLoaderContext) : SinglePageMangaParser(context, MangaParserSource.PO2SCANS) {
+internal class Po2Scans(context: MangaLoaderContext) :
+	LegacySinglePageMangaParser(context, MangaParserSource.PO2SCANS) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.ALPHABETICAL)
 	override val configKeyDomain = ConfigKey.Domain("po2scans.com")
@@ -45,15 +46,15 @@ internal class Po2Scans(context: MangaLoaderContext) : SinglePageMangaParser(con
 			Manga(
 				id = generateUid(href),
 				title = div.selectFirstOrThrow("h2").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
-				coverUrl = div.selectFirstOrThrow("img").src()?.toAbsoluteUrl(domain).orEmpty(),
+				contentRating = null,
+				coverUrl = div.selectFirstOrThrow("img").src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -62,6 +63,7 @@ internal class Po2Scans(context: MangaLoaderContext) : SinglePageMangaParser(con
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val dateFormat = SimpleDateFormat("dd MMM, yy", Locale.ENGLISH)
+		val author = doc.selectLast(".author span")?.textOrNull()
 		return manga.copy(
 			state = when (doc.select(".status span").last()?.text()) {
 				"Ongoing" -> MangaState.ONGOING
@@ -69,7 +71,7 @@ internal class Po2Scans(context: MangaLoaderContext) : SinglePageMangaParser(con
 				else -> null
 			},
 			tags = emptySet(),
-			author = doc.selectLast(".author span")?.textOrNull(),
+			authors = setOfNotNull(author),
 			description = doc.selectFirstOrThrow(".summary").html(),
 			chapters = doc.select(".chap-section .chap")
 				.mapChapters(reversed = true) { i, div ->
@@ -77,7 +79,7 @@ internal class Po2Scans(context: MangaLoaderContext) : SinglePageMangaParser(con
 					val url = "/" + a.attrAsRelativeUrl("href").toAbsoluteUrl(domain)
 					MangaChapter(
 						id = generateUid(url),
-						name = a.text(),
+						title = a.text(),
 						number = i + 1f,
 						volume = 0,
 						url = url,

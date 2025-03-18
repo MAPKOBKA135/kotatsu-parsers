@@ -8,8 +8,8 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.ErrorMessages
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.asTypedList
@@ -23,7 +23,7 @@ internal abstract class ZeistMangaParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 12,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -172,13 +172,13 @@ internal abstract class ZeistMangaParser(
 				publicUrl = href,
 				coverUrl = urlImg.orEmpty(),
 				title = name,
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -220,11 +220,12 @@ internal abstract class ZeistMangaParser(
 			?: doc.selectFirst("div.y6x11p:contains(Yazar) .dt")
 			?: doc.selectFirst("ul.infonime li:contains(Author) span")
 
+
 		val desc = doc.getElementById("synopsis") ?: doc.getElementById("Sinopse") ?: doc.getElementById("sinopas")
 		?: doc.selectFirst(".sinopsis") ?: doc.selectFirst(".sinopas")
 		val chaptersDeferred = async { loadChapters(manga.url, doc) }
 		manga.copy(
-			author = author?.text(),
+			authors = author?.text()?.let { setOf(it) } ?: emptySet(),
 			tags = doc.select(selectTags).mapToSet { a ->
 				MangaTag(
 					key = a.attr("href").substringAfterLast("label/").substringBefore("?"),
@@ -294,7 +295,7 @@ internal abstract class ZeistMangaParser(
 			MangaChapter(
 				id = generateUid(href),
 				url = href,
-				name = name,
+				title = name,
 				number = i + 1f,
 				volume = 0,
 				branch = null,

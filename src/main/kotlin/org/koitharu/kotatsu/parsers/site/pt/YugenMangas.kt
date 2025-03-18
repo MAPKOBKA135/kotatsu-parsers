@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.pt
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
@@ -15,7 +15,7 @@ import java.util.*
 
 @MangaSourceParser("YUGENMANGAS", "YugenApp", "pt")
 internal class YugenMangas(context: MangaLoaderContext) :
-	SinglePageMangaParser(context, MangaParserSource.YUGENMANGAS) {
+	LegacySinglePageMangaParser(context, MangaParserSource.YUGENMANGAS) {
 
 	override val configKeyDomain = ConfigKey.Domain("yugenmangasbr.voblog.xyz")
 
@@ -82,13 +82,13 @@ internal class YugenMangas(context: MangaLoaderContext) :
 				publicUrl = slug,
 				title = j.getString("name"),
 				coverUrl = cover,
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -103,11 +103,12 @@ internal class YugenMangas(context: MangaLoaderContext) :
 			webClient.httpPost("https://api.$domain/api/chapters/get_chapters_by_serie/", body).parseJson()
 				.getJSONArray("chapters")
 		val dateFormat = SimpleDateFormat("dd/MM/yyyy", sourceLocale)
+		val author = detailManga.getStringOrNull("author")
 		return manga.copy(
 			description = detailManga.getString("synopsis"),
 			coverUrl = detailManga.getString("cover"),
-			altTitle = detailManga.getStringOrNull("alternative_names"),
-			author = detailManga.getStringOrNull("author"),
+			altTitles = setOfNotNull(detailManga.getStringOrNull("alternative_names")),
+			authors = setOfNotNull(author),
 			state = detailManga.getStringOrNull("status")?.let {
 				when (it) {
 					"ongoing" -> MangaState.ONGOING
@@ -120,7 +121,7 @@ internal class YugenMangas(context: MangaLoaderContext) :
 				val url = "https://api.$domain/api/serie/${manga.url}/chapter/${j.getString("slug")}/images/imgs/get/"
 				MangaChapter(
 					id = generateUid(url),
-					name = j.getString("name"),
+					title = j.getString("name"),
 					number = j.getString("name").removePrefix("Capítulo ").toFloat(),
 					volume = 0,
 					url = url,
@@ -132,7 +133,7 @@ internal class YugenMangas(context: MangaLoaderContext) :
 					branch = null,
 					source = source,
 				)
-			}.sortedBy { it.name },
+			}.sortedBy { it.title },
 		)
 	}
 

@@ -2,14 +2,15 @@ package org.koitharu.kotatsu.parsers.site.en
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("MYCOMICLIST", "MyComicList", "en", ContentType.COMICS)
-internal class MyComicList(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MYCOMICLIST, 24) {
+internal class MyComicList(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.MYCOMICLIST, 24) {
 
 	override val configKeyDomain = ConfigKey.Domain("mycomiclist.org")
 
@@ -73,12 +74,12 @@ internal class MyComicList(context: MangaLoaderContext) : PagedMangaParser(conte
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				title = div.selectFirst("h3 a")?.text().orEmpty(),
-				altTitle = null,
-				author = null,
+				altTitles = emptySet(),
+				authors = emptySet(),
 				tags = emptySet(),
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfwSource,
-				coverUrl = img?.attr("data-src").orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = img?.attrAsAbsoluteUrlOrNull("data-src"),
 				state = null,
 				source = source,
 			)
@@ -87,6 +88,7 @@ internal class MyComicList(context: MangaLoaderContext) : PagedMangaParser(conte
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val author = doc.selectFirst("td:contains(Author:) + td")?.textOrNull()
 		return manga.copy(
 			tags = doc.select("td:contains(Genres:) + td a").mapToSet { a ->
 				MangaTag(
@@ -95,7 +97,7 @@ internal class MyComicList(context: MangaLoaderContext) : PagedMangaParser(conte
 					source = source,
 				)
 			},
-			author = doc.selectFirst("td:contains(Author:) + td")?.textOrNull(),
+			authors = setOfNotNull(author),
 			state = when (doc.selectFirst("td:contains(Status:) + td a")?.text()?.lowercase()) {
 				"ongoing" -> MangaState.ONGOING
 				"completed" -> MangaState.FINISHED
@@ -109,7 +111,7 @@ internal class MyComicList(context: MangaLoaderContext) : PagedMangaParser(conte
 
 				MangaChapter(
 					id = generateUid(href),
-					name = name,
+					title = name,
 					number = name.substringAfter('#').toFloatOrNull() ?: (i + 1f),
 					url = href,
 					scanlator = null,

@@ -7,8 +7,8 @@ import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.mapJSON
@@ -18,7 +18,8 @@ import java.util.*
 
 @Broken
 @MangaSourceParser("FLIXSCANS", "FlixScans.net", "ar")
-internal class FlixScans(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.FLIXSCANS, 18) {
+internal class FlixScans(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.FLIXSCANS, 18) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
 	override val configKeyDomain = ConfigKey.Domain("flixscans.net")
@@ -108,11 +109,11 @@ internal class FlixScans(context: MangaLoaderContext) : PagedMangaParser(context
 			Manga(
 				id = generateUid(href),
 				title = j.getString("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
+				contentRating = null,
 				coverUrl = cover,
 				tags = emptySet(),
 				state = when (j.getString("status")) {
@@ -122,7 +123,7 @@ internal class FlixScans(context: MangaLoaderContext) : PagedMangaParser(context
 					"droped" -> MangaState.ABANDONED
 					else -> null
 				},
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -190,7 +191,7 @@ internal class FlixScans(context: MangaLoaderContext) : PagedMangaParser(context
 			MangaChapter(
 				id = generateUid(url),
 				url = url,
-				name = j.getString("slug").replace('-', ' '),
+				title = j.getString("slug").replace('-', ' '),
 				number = i + 1f,
 				volume = 0,
 				branch = null,

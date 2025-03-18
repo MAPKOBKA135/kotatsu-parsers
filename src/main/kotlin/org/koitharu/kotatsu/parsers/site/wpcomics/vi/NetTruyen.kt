@@ -5,13 +5,10 @@ import kotlinx.coroutines.coroutineScope
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.model.MangaChapter
-import org.koitharu.kotatsu.parsers.model.MangaParserSource
-import org.koitharu.kotatsu.parsers.model.MangaState
-import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
+import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.site.wpcomics.WpComicsParser
 import org.koitharu.kotatsu.parsers.util.*
+import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
 import java.text.SimpleDateFormat
 
 @MangaSourceParser("NETTRUYEN", "NetTruyen", "vi")
@@ -20,7 +17,7 @@ internal class NetTruyen(context: MangaLoaderContext) :
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain(
 		"nettruyenrr.com",
-		"nettruyenx.com"
+		"nettruyenxx.com",
 	)
 
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
@@ -31,10 +28,11 @@ internal class NetTruyen(context: MangaLoaderContext) :
 		val doc = docDeferred.await()
 		val tagsElement = doc.select("li.kind p.col-xs-8 a")
 		val mangaTags = tagsElement.mapNotNullToSet { tagMap[it.text()] }
+		val author = doc.body().select(selectAut).textOrNull()
 		manga.copy(
 			description = doc.selectFirst(selectDesc)?.html(),
-			altTitle = doc.selectFirst("h2.other-name")?.textOrNull(),
-			author = doc.body().select(selectAut).textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst("h2.other-name")?.textOrNull()),
+			authors = setOfNotNull(author),
 			state = doc.selectFirst(selectState)?.let {
 				when (it.text()) {
 					in ongoing -> MangaState.ONGOING
@@ -62,7 +60,7 @@ internal class NetTruyen(context: MangaLoaderContext) :
 
 			MangaChapter(
 				id = generateUid(chapterUrl),
-				name = jo.getString("chapter_name"),
+				title = jo.getStringOrNull("chapter_name"),
 				number = i + 1f,
 				volume = 0,
 				url = chapterUrl,

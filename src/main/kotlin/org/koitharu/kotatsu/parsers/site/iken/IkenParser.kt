@@ -2,14 +2,11 @@ package org.koitharu.kotatsu.parsers.site.iken
 
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
-import org.koitharu.kotatsu.parsers.util.json.asTypedList
-import org.koitharu.kotatsu.parsers.util.json.getBooleanOrDefault
-import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
-import org.koitharu.kotatsu.parsers.util.json.mapJSON
+import org.koitharu.kotatsu.parsers.util.json.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -18,7 +15,7 @@ internal abstract class IkenParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 18,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -101,17 +98,19 @@ internal abstract class IkenParser(
 	protected open fun parseMangaList(json: JSONObject): List<Manga> {
 		return json.getJSONArray("posts").mapJSON {
 			val url = "/series/${it.getString("slug")}"
+			val isNsfwSource = it.getBooleanOrDefault("hot", false)
+			val author = it.getString("author")
 			Manga(
 				id = it.getLong("id"),
 				url = url,
 				publicUrl = url.toAbsoluteUrl(domain),
-				coverUrl = it.getString("featuredImage").orEmpty(),
+				coverUrl = it.getString("featuredImage"),
 				title = it.getString("postTitle"),
-				altTitle = it.getString("alternativeTitles"),
+				altTitles = setOfNotNull(it.getStringOrNull("alternativeTitles")),
 				description = it.getString("postContent"),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = it.getString("author"),
+				authors = setOfNotNull(author),
 				state = when (it.getString("seriesStatus")) {
 					"ONGOING" -> MangaState.ONGOING
 					"COMPLETED" -> MangaState.FINISHED
@@ -120,7 +119,7 @@ internal abstract class IkenParser(
 					else -> null
 				},
 				source = source,
-				isNsfw = it.getBooleanOrDefault("hot", false),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -145,8 +144,8 @@ internal abstract class IkenParser(
 				val chapterUrl = "/series/$slugName/${it.getString("slug")}"
 				MangaChapter(
 					id = it.getLong("id"),
-					name = "Chapter : ${it.getInt("number")}",
-					number = it.getInt("number").toFloat(),
+					title = null,
+					number = it.getFloatOrDefault("number", 0f),
 					volume = 0,
 					url = chapterUrl,
 					scanlator = null,

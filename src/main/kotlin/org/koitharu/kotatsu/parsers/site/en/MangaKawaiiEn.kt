@@ -5,15 +5,15 @@ import kotlinx.coroutines.coroutineScope
 import okhttp3.Headers
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("MANGAKAWAII_EN", "MangaKawaii En", "en")
 internal class MangaKawaiiEn(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.MANGAKAWAII_EN, 50) {
+	LegacyPagedMangaParser(context, MangaParserSource.MANGAKAWAII_EN, 50) {
 
 	override val configKeyDomain = ConfigKey.Domain("www.mangakawaii.io")
 
@@ -81,15 +81,15 @@ internal class MangaKawaiiEn(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = (div.selectFirst("img")?.src() ?: a.attr("data-bg")).orEmpty(),
+				coverUrl = div.selectFirst("img")?.src() ?: a.attrAsAbsoluteUrlOrNull("data-bg"),
 				title = div.selectFirstOrThrow("h4, .media-thumbnail__name").text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -99,10 +99,13 @@ internal class MangaKawaiiEn(context: MangaLoaderContext) :
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val firstChapter = doc.selectFirst("tr[class*='volume-'] a")?.attr("href")
 		val chaptersDeferred = async { loadChapters(firstChapter) }
+		val author = doc.select("a[href*=author]").textOrNull()
 		manga.copy(
 			description = doc.selectFirst("dd.text-justify.text-break")?.html(),
-			altTitle = doc.select("span[itemprop*=alternativeHeadline]").joinToString { ", " }.nullIfEmpty(),
-			author = doc.select("a[href*=author]").textOrNull(),
+			altTitles = doc.select("span[itemprop*=alternativeHeadline]").mapNotNullToSet {
+				it.textOrNull()
+			},
+			authors = setOfNotNull(author),
 			state = when (doc.selectFirst("span.badge.bg-success.text-uppercase")?.text()) {
 				"Ongoing" -> MangaState.ONGOING
 				"" -> MangaState.FINISHED
@@ -131,7 +134,7 @@ internal class MangaKawaiiEn(context: MangaLoaderContext) :
 				val url = a.attrAsRelativeUrl("href")
 				MangaChapter(
 					id = generateUid(url),
-					name = a.text(),
+					title = a.text(),
 					number = i + 1f,
 					volume = 0,
 					url = url,

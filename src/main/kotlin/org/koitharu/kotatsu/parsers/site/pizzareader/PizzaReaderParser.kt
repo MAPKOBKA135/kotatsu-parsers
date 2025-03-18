@@ -4,8 +4,8 @@ import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.asTypedList
@@ -19,7 +19,7 @@ internal abstract class PizzaReaderParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	domain: String,
-) : SinglePageMangaParser(context, source) {
+) : LegacySinglePageMangaParser(context, source) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -175,6 +175,12 @@ internal abstract class PizzaReaderParser(
 	}
 
 	private fun addManga(href: String, j: JSONObject): Manga {
+		val isNsfwSource = when (j.getString("adult").toInt()) {
+			0 -> false
+			1 -> true
+			else -> true
+		}
+		val author = j.getString("author")
 		return Manga(
 			id = generateUid(href),
 			url = href,
@@ -182,14 +188,15 @@ internal abstract class PizzaReaderParser(
 			coverUrl = j.getString("thumbnail"),
 			title = j.getString("title"),
 			description = j.getString("description"),
-			altTitle = j.getJSONArray("alt_titles").toString()
+			altTitles = j.getJSONArray("alt_titles").toString()
 				.replace("[\"", "")
 				.replace("\"]", "")
-				.replace("\",\"", " , "),
+				.split("\",\"")
+				.toSet(),
 			rating = j.getString("rating").toFloatOrNull()?.div(10f)
 				?: RATING_UNKNOWN,
 			tags = emptySet(),
-			author = j.getString("author"),
+			authors = setOfNotNull(author),
 			state = when (j.getString("status").lowercase()) {
 				in ongoing -> MangaState.ONGOING
 				in finished -> MangaState.FINISHED
@@ -198,11 +205,7 @@ internal abstract class PizzaReaderParser(
 				else -> null
 			},
 			source = source,
-			isNsfw = when (j.getString("adult").toInt()) {
-				0 -> false
-				1 -> true
-				else -> true
-			},
+			contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 		)
 	}
 
@@ -226,7 +229,7 @@ internal abstract class PizzaReaderParser(
 				val date = j.getStringOrNull("updated_at")
 				MangaChapter(
 					id = generateUid(url),
-					name = name,
+					title = name,
 					number = i + 1f,
 					volume = 0,
 					url = url,

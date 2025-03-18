@@ -1,8 +1,8 @@
 package org.koitharu.kotatsu.parsers.site.onemanga
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
@@ -11,7 +11,7 @@ internal abstract class OneMangaParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	domain: String,
-) : SinglePageMangaParser(context, source) {
+) : LegacySinglePageMangaParser(context, source) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -31,23 +31,26 @@ internal abstract class OneMangaParser(
 		val url = "https://$domain"
 		val doc = webClient.httpGet(url).parseHtml()
 		val manga = ArrayList<Manga>()
+		val author = doc.selectFirst("div.elementor-widget-text-editor ul li:contains(Auteur(s))")?.text()
+			?.replace("Auteur(s): ", "").orEmpty()
 		manga.add(
 			Manga(
 				id = generateUid(url),
 				url = url,
 				publicUrl = url,
-				coverUrl = doc.selectFirst("div.elementor-widget-container img")?.src().orEmpty(),
+				coverUrl = doc.selectFirst("div.elementor-widget-container img")?.src(),
 				title = doc.selectFirst("ul.elementor-nav-menu li a")?.text().orEmpty(),
-				altTitle = doc.selectFirst("div.elementor-widget-text-editor ul li:contains(Nom(s) Alternatif(s))")
-					?.text()?.replace("Nom(s) Alternatif(s) :", "").orEmpty(),
+				altTitles = setOfNotNull(
+					doc.selectFirst("div.elementor-widget-text-editor ul li:contains(Nom(s) Alternatif(s))")
+						?.text()?.replace("Nom(s) Alternatif(s) :", "")?.nullIfEmpty(),
+				),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = doc.selectFirst("div.elementor-widget-text-editor ul li:contains(Auteur(s))")?.text()
-					?.replace("Auteur(s): ", "").orEmpty(),
+				authors = setOf(author),
 				description = doc.selectLast("div.elementor-widget-text-editor ul li")?.text().orEmpty(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			),
 		)
 		return manga
@@ -62,7 +65,7 @@ internal abstract class OneMangaParser(
 					val href = a.attrAsRelativeUrl("href")
 					MangaChapter(
 						id = generateUid(href),
-						name = a.text(),
+						title = a.text(),
 						number = i + 1f,
 						volume = 0,
 						url = href,

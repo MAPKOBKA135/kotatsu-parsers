@@ -6,15 +6,15 @@ import kotlinx.coroutines.sync.withLock
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGAAY", "MangaAy", "tr")
-internal class MangaAy(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MANGAAY, 45) {
+internal class MangaAy(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.MANGAAY, 45) {
 
 	override val configKeyDomain = ConfigKey.Domain("manga-ay.com")
 
@@ -91,13 +91,13 @@ internal class MangaAy(context: MangaLoaderContext) : PagedMangaParser(context, 
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				title = div.selectLast(".item-name")?.text().orEmpty(),
 				coverUrl = div.selectFirst("img")?.src().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -112,14 +112,14 @@ internal class MangaAy(context: MangaLoaderContext) : PagedMangaParser(context, 
 				url = href,
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				title = a.text(),
-				coverUrl = "",
-				altTitle = null,
+				coverUrl = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -160,7 +160,7 @@ internal class MangaAy(context: MangaLoaderContext) : PagedMangaParser(context, 
 					val href = a.attrAsRelativeUrl("href")
 					MangaChapter(
 						id = generateUid(href),
-						name = a.text(),
+						title = a.text(),
 						number = i + 1f,
 						volume = 0,
 						url = href,

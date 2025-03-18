@@ -9,10 +9,10 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.bitmap.Bitmap
 import org.koitharu.kotatsu.parsers.bitmap.Rect
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
@@ -23,7 +23,7 @@ import kotlin.math.min
 
 @MangaSourceParser("MANGAREADERTO", "MangaReader.To")
 internal class MangaReaderToParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.MANGAREADERTO, 16),
+	LegacyPagedMangaParser(context, MangaParserSource.MANGAREADERTO, 16),
 	Interceptor, MangaParserAuthProvider {
 
 	override val configKeyDomain = ConfigKey.Domain("mangareader.to")
@@ -131,9 +131,9 @@ internal class MangaReaderToParser(context: MangaLoaderContext) :
 				title = thumb.attr("alt"),
 				coverUrl = thumb.attr("src"),
 				source = source,
-				altTitle = null,
-				author = null,
-				isNsfw = false,
+				altTitles = emptySet(),
+				authors = emptySet(),
+				contentRating = null,
 				rating = RATING_UNKNOWN,
 				state = null,
 				tags = emptySet(),
@@ -146,17 +146,17 @@ internal class MangaReaderToParser(context: MangaLoaderContext) :
 		return document.select(".block_area_authors-other .manga_list-sbs .manga-poster, .featured-block-ul .manga-poster")
 			.map {
 				val mangaUrl = it.attrAsRelativeUrl("href")
-				val thumb = it.select("img")
+				val thumb = it.selectFirstOrThrow("img")
 				Manga(
 					id = generateUid(mangaUrl),
 					url = mangaUrl,
 					publicUrl = mangaUrl.toAbsoluteUrl(domain),
 					title = thumb.attr("alt"),
-					coverUrl = thumb.attr("src"),
+					coverUrl = thumb.attrAsAbsoluteUrlOrNull("src"),
 					source = source,
-					altTitle = null,
-					author = null,
-					isNsfw = false,
+					altTitles = emptySet(),
+					authors = emptySet(),
+					contentRating = null,
 					rating = RATING_UNKNOWN,
 					state = null,
 					tags = emptySet(),
@@ -169,10 +169,12 @@ internal class MangaReaderToParser(context: MangaLoaderContext) :
 		val availableTags = tags.get()
 		var isAdult = false
 		var isSuggestive = false
+		val author = document.select("div.anisc-info a[href*=/author/]")
+			.joinToString { it.ownText().replace(", ", " ") }.nullIfEmpty()
 
 		return manga.copy(
 			title = document.selectFirst("h2.manga-name")!!.ownText(),
-			altTitle = document.selectFirst("div.manga-name-or")?.ownTextOrNull(),
+			altTitles = setOfNotNull(document.selectFirst("div.manga-name-or")?.ownTextOrNull()),
 			rating = document.selectFirst("div.anisc-info .item:contains(score:) > .name")
 				?.text()?.toFloatOrNull()?.div(10) ?: RATING_UNKNOWN,
 			coverUrl = document.selectFirst(".manga-poster > img")?.attrAsAbsoluteUrlOrNull("src"),
@@ -201,8 +203,7 @@ internal class MangaReaderToParser(context: MangaLoaderContext) :
 						else -> null
 					}
 				},
-			author = document.select("div.anisc-info a[href*=/author/]")
-				.joinToString { it.ownText().replace(", ", " ") }.nullIfEmpty(),
+			authors = setOfNotNull(author),
 			description = document.select("div.description").html(),
 			chapters = parseChapters(document),
 			source = source,
@@ -221,7 +222,7 @@ internal class MangaReaderToParser(context: MangaLoaderContext) :
 				chapters.add(
 					MangaChapter(
 						id = generateUid(a.attrAsRelativeUrl("href")),
-						name = a.attr("title"),
+						title = a.attrOrNull("title"),
 						number = li.attr("data-number").toFloat(),
 						volume = 0,
 						url = a.attrAsRelativeUrl("href"),
@@ -241,7 +242,7 @@ internal class MangaReaderToParser(context: MangaLoaderContext) :
 				chapters.add(
 					MangaChapter(
 						id = generateUid(url),
-						name = name,
+						title = name,
 						number = numRegex.find(name)?.groupValues?.getOrNull(1)?.toFloatOrNull() ?: 0f,
 						volume = 0,
 						url = url,

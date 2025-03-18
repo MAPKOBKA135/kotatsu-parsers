@@ -7,8 +7,8 @@ import kotlinx.coroutines.sync.withLock
 import okhttp3.Headers
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -20,7 +20,7 @@ internal abstract class HotComicsParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 24,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -100,25 +100,27 @@ internal abstract class HotComicsParser(
 			}
 
 			val tags = li.select(".etc span").mapNotNullToSet { tagMap[it.text()] }
+			val isNsfwSource = a.selectFirst(".ico-18plus") != null
+			val author = li.selectFirst(".writer")?.text().orEmpty()
 
 			Manga(
 				id = generateUid(url),
 				url = url,
 				publicUrl = url.toAbsoluteUrl(domain),
-				coverUrl = li.selectFirst("img")?.src().orEmpty(),
+				coverUrl = li.selectFirst("img")?.src(),
 				title = li.selectFirst(".title")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				description = li.selectFirst("p[itemprop*=description]")?.text().orEmpty(),
 				tags = tags,
-				author = li.selectFirst(".writer")?.text().orEmpty(),
+				authors = setOf(author),
 				state = if (doc.selectFirst(".ico_fin") != null) {
 					MangaState.FINISHED
 				} else {
 					MangaState.ONGOING
 				},
 				source = source,
-				isNsfw = a.selectFirst(".ico-18plus") != null,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -148,7 +150,7 @@ internal abstract class HotComicsParser(
 					val chapterNum = li.selectFirst(".num")?.text()?.toFloat() ?: (i + 1f)
 					MangaChapter(
 						id = generateUid(url),
-						name = "Chapter : $chapterNum",
+						title = null,
 						number = chapterNum,
 						volume = 0,
 						url = url,

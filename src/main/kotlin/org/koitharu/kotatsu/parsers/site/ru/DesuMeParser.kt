@@ -5,8 +5,8 @@ import okhttp3.Headers
 import okhttp3.HttpUrl
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
@@ -17,7 +17,8 @@ import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import java.util.*
 
 @MangaSourceParser("DESUME", "Desu", "ru")
-internal class DesuMeParser(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.DESUME, 20) {
+internal class DesuMeParser(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.DESUME, 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("desu.me", "desu.win")
 
@@ -81,7 +82,7 @@ internal class DesuMeParser(context: MangaLoaderContext) : PagedMangaParser(cont
 				publicUrl = jo.getString("url"),
 				source = MangaParserSource.DESUME,
 				title = jo.getString("russian"),
-				altTitle = jo.getString("name"),
+				altTitles = setOf(jo.getString("name")),
 				coverUrl = cover.getString("preview"),
 				largeCoverUrl = cover.getString("original"),
 				state = when (jo.getString("status")) {
@@ -91,7 +92,7 @@ internal class DesuMeParser(context: MangaLoaderContext) : PagedMangaParser(cont
 				},
 				rating = jo.getDouble("score").toFloat().coerceIn(0f, 1f),
 				id = generateUid(id),
-				isNsfw = false,
+				contentRating = null,
 				tags = if (!tagsMap.isNullOrEmpty()) {
 					genres.mapNotNullToSet { g ->
 						tagsMap[g.trim().toTitleCase()]
@@ -99,7 +100,7 @@ internal class DesuMeParser(context: MangaLoaderContext) : PagedMangaParser(cont
 				} else {
 					emptySet()
 				},
-				author = null,
+				authors = emptySet(),
 				description = jo.getString("description"),
 			)
 		}
@@ -131,13 +132,7 @@ internal class DesuMeParser(context: MangaLoaderContext) : PagedMangaParser(cont
 					source = manga.source,
 					url = "$baseChapterUrl$chid",
 					uploadDate = jo.getLong("date") * 1000,
-					name = jo.getStringOrNull("title") ?: buildString {
-						append("Том ")
-						append(volume)
-						append(" Глава ")
-						append(number)
-						removeTrailingZero()
-					},
+					title = jo.getStringOrNull("title"),
 					volume = volume,
 					number = number,
 					scanlator = null,

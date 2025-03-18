@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.heancmsalt
 
 import org.koitharu.kotatsu.parsers.ErrorMessages
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -17,7 +17,7 @@ internal abstract class HeanCmsAlt(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 18,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -65,15 +65,15 @@ internal abstract class HeanCmsAlt(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = div.selectFirst(selectMangaTitle)?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -89,7 +89,7 @@ internal abstract class HeanCmsAlt(
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		val dateFormat = SimpleDateFormat(datePattern, sourceLocale)
 		return manga.copy(
-			altTitle = doc.selectFirst(selectAlt)?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst(selectAlt)?.textOrNull()),
 			description = doc.selectFirst(selectDesc)?.html(),
 			chapters = doc.select(selectChapter)
 				.mapChapters(reversed = true) { i, a ->
@@ -97,7 +97,7 @@ internal abstract class HeanCmsAlt(
 					val url = a.attrAsRelativeUrl("href").toAbsoluteUrl(domain)
 					MangaChapter(
 						id = generateUid(url),
-						name = a.selectFirst(selectChapterTitle)?.text() ?: "Chapter : ${i + 1f}",
+						title = a.selectFirst(selectChapterTitle)?.textOrNull(),
 						number = i + 1f,
 						volume = 0,
 						url = url,

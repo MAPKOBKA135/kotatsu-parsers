@@ -5,8 +5,8 @@ import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -17,7 +17,7 @@ internal abstract class KeyoappParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	domain: String,
-) : SinglePageMangaParser(context, source) {
+) : LegacySinglePageMangaParser(context, source) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -127,9 +127,9 @@ internal abstract class KeyoappParser(
 			id = generateUid(href),
 			url = href,
 			publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-			coverUrl = cover?.styleValueOrNull("background-image")?.cssUrl().orEmpty(),
+			coverUrl = cover?.styleValueOrNull("background-image")?.cssUrl(),
 			title = div.selectFirstOrThrow("h3").text().orEmpty(),
-			altTitle = null,
+			altTitles = emptySet(),
 			rating = RATING_UNKNOWN,
 			tags = div.select("div.gap-1 a").mapToSet { a ->
 				MangaTag(
@@ -138,10 +138,10 @@ internal abstract class KeyoappParser(
 					source = source,
 				)
 			},
-			author = null,
+			authors = emptySet(),
 			state = null,
 			source = source,
-			isNsfw = isNsfwSource,
+			contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 		)
 	}
 
@@ -193,7 +193,7 @@ internal abstract class KeyoappParser(
 					val dateText = a.selectLast("div.text-xs.w-fit")?.text() ?: "0"
 					MangaChapter(
 						id = generateUid(href),
-						name = name,
+						title = name,
 						number = i + 1f,
 						volume = 0,
 						url = href,

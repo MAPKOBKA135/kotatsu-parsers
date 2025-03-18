@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.uk
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -12,7 +12,7 @@ import java.util.*
 private const val DEF_BRANCH_NAME = "Основний переклад"
 
 @MangaSourceParser("MANGAINUA", "MANGA/in/UA", "uk")
-internal class MangaInUaParser(context: MangaLoaderContext) : PagedMangaParser(
+internal class MangaInUaParser(context: MangaLoaderContext) : LegacyPagedMangaParser(
 	context = context,
 	source = MangaParserSource.MANGAINUA,
 	pageSize = 24,
@@ -69,18 +69,19 @@ internal class MangaInUaParser(context: MangaLoaderContext) : PagedMangaParser(
 		val items = container.select("div.col-6")
 		return items.mapNotNull { item ->
 			val href = item.selectFirst("a")?.attrAsRelativeUrl("href") ?: return@mapNotNull null
+			val isNsfwSource = item.selectFirst("ul.card__list")?.select("li")?.lastOrNull()?.text() == "18+"
 			Manga(
 				id = generateUid(href),
 				title = item.selectFirst("h3.card__title")?.text() ?: return@mapNotNull null,
 				coverUrl = item.selectFirst("header.card__cover")?.selectFirst("img")?.run {
 					attrAsAbsoluteUrlOrNull("data-src") ?: attrAsAbsoluteUrlOrNull("src")
 				}.orEmpty(),
-				altTitle = null,
-				author = null,
+				altTitles = emptySet(),
+				authors = emptySet(),
 				rating = item.selectFirst("div.card__short-rate--num")?.text()?.toFloatOrNull()?.div(10F)
 					?: RATING_UNKNOWN,
 				url = href,
-				isNsfw = item.selectFirst("ul.card__list")?.select("li")?.lastOrNull()?.text() == "18+",
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				tags = runCatching {
 					item.selectFirst("div.card__category")?.select("a")?.mapToSet {
 						MangaTag(
@@ -129,7 +130,7 @@ internal class MangaInUaParser(context: MangaLoaderContext) : PagedMangaParser(
 				if (!isAlternative) i++
 				MangaChapter(
 					id = generateUid(href),
-					name = if (isAlternative) {
+					title = if (isAlternative) {
 						prevChapterName ?: return@mapChapters null
 					} else {
 						prevChapterName = name

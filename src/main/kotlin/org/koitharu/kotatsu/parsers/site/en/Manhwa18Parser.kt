@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.en
 import androidx.collection.ArrayMap
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
@@ -12,7 +12,7 @@ import java.util.*
 
 @MangaSourceParser("MANHWA18", "Manhwa18.net", "en", type = ContentType.HENTAI)
 internal class Manhwa18Parser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.MANHWA18, pageSize = 18, searchPageSize = 18) {
+	LegacyPagedMangaParser(context, MangaParserSource.MANHWA18, pageSize = 18, searchPageSize = 18) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("manhwa18.net")
 
@@ -125,15 +125,15 @@ internal class Manhwa18Parser(context: MangaLoaderContext) :
 				Manga(
 					id = generateUid(absUrl.toRelativeUrl(domain)),
 					title = titleElement.text(),
-					altTitle = null,
+					altTitles = emptySet(),
 					url = absUrl.toRelativeUrl(domain),
 					publicUrl = absUrl,
 					rating = RATING_UNKNOWN,
-					isNsfw = true,
-					coverUrl = it.selectFirst("div.img-in-ratio")?.attrAsAbsoluteUrl("data-bg").orEmpty(),
+					contentRating = ContentRating.ADULT,
+					coverUrl = it.selectFirst("div.img-in-ratio")?.attrAsAbsoluteUrl("data-bg"),
 					tags = emptySet(),
 					state = null,
-					author = null,
+					authors = emptySet(),
 					largeCoverUrl = null,
 					description = null,
 					source = MangaParserSource.MANHWA18,
@@ -164,9 +164,11 @@ internal class Manhwa18Parser(context: MangaLoaderContext) :
 			}
 
 		return manga.copy(
-			altTitle = cardInfoElement?.selectFirst("b:contains(Other names)")?.parent()?.ownTextOrNull()
-				?.removePrefix(": "),
-			author = author,
+			altTitles = setOfNotNull(
+				cardInfoElement?.selectFirst("b:contains(Other names)")?.parent()?.ownTextOrNull()
+					?.removePrefix(": "),
+			),
+			authors = setOfNotNull(author),
 			description = docs.selectFirst(".series-summary .summary-content")?.html(),
 			tags = tags.orEmpty(),
 			state = state,
@@ -176,7 +178,7 @@ internal class Manhwa18Parser(context: MangaLoaderContext) :
 				val uploadDate = parseUploadDate(element.selectFirst(".chapter-time")?.text())
 				MangaChapter(
 					id = generateUid(chapterUrl),
-					name = element.selectFirst(".chapter-name")?.text().orEmpty(),
+					title = element.selectFirst(".chapter-name")?.textOrNull(),
 					number = index + 1f,
 					volume = 0,
 					url = chapterUrl,

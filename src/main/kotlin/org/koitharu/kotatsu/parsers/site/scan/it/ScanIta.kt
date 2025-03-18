@@ -23,12 +23,13 @@ internal class ScanIta(context: MangaLoaderContext) :
 		val selectTag = doc.select(".card-series-detail .col-6:contains(Categorie) div")
 		val tags = selectTag.mapNotNullToSet { tagMap[it.text()] }
 		val chaptersDeferred = async { loadChapters(doc) }
+		val author = doc.selectFirst(".card-series-detail .col-6:contains(Autore) div")?.textOrNull()
 		manga.copy(
 			rating = doc.selectFirst(".card-series-detail .rate-value span")?.ownText()?.toFloatOrNull()?.div(5f)
 				?: RATING_UNKNOWN,
 			tags = tags,
-			author = doc.selectFirst(".card-series-detail .col-6:contains(Autore) div")?.textOrNull(),
-			altTitle = doc.selectFirst(".card div.col-12.mb-4 h2")?.textOrNull(),
+			authors = setOfNotNull(author),
+			altTitles = setOfNotNull(doc.selectFirst(".card div.col-12.mb-4 h2")?.textOrNull()),
 			description = doc.selectFirst(".card div.col-12.mb-4 p")?.html(),
 			chapters = chaptersDeferred.await(),
 		)
@@ -44,7 +45,7 @@ internal class ScanIta(context: MangaLoaderContext) :
 			val href = div.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 			MangaChapter(
 				id = generateUid(href),
-				name = div.selectFirstOrThrow("h5").html().substringBefore("<div").substringAfter("</span>"),
+				title = div.selectFirstOrThrow("h5").html().substringBefore("<div").substringAfter("</span>"),
 				number = i + 1f,
 				volume = 0,
 				url = href,

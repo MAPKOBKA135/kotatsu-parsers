@@ -10,8 +10,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.asTypedList
@@ -25,7 +25,7 @@ internal abstract class MangaPlusParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	private val sourceLang: String,
-) : SinglePageMangaParser(context, source), Interceptor {
+) : LegacySinglePageMangaParser(context, source), Interceptor {
 
 	private val apiUrl = "https://jumpg-webapi.tokyo-cdn.com/api"
 	override val configKeyDomain = ConfigKey.Domain("mangaplus.shueisha.co.jp")
@@ -121,9 +121,9 @@ internal abstract class MangaPlusParser(
 				publicUrl = "/titles/$titleId".toAbsoluteUrl(domain),
 				title = name,
 				coverUrl = it.getString("portraitImageUrl"),
-				altTitle = null,
-				author = author,
-				isNsfw = false,
+				altTitles = emptySet(),
+				authors = setOf(author),
+				contentRating = null,
 				rating = RATING_UNKNOWN,
 				state = null,
 				source = source,
@@ -143,13 +143,14 @@ internal abstract class MangaPlusParser(
 			}
 
 		val hiatus = json.getStringOrNull("nonAppearanceInfo")?.contains("on a hiatus") == true
+		val author = title.getString("author")
+			.split("/").joinToString(transform = String::trim)
 
 		return manga.copy(
 			title = title.getString("name"),
 			publicUrl = "/titles/${title.getInt("titleId")}".toAbsoluteUrl(domain),
 			coverUrl = title.getString("portraitImageUrl"),
-			author = title.getString("author")
-				.split("/").joinToString(transform = String::trim),
+			authors = setOf(author),
 			description = buildString {
 				json.getString("overview").let(::append)
 				json.getStringOrNull("viewingPeriodDescription")
@@ -183,7 +184,7 @@ internal abstract class MangaPlusParser(
 			MangaChapter(
 				id = generateUid(chapterId),
 				url = chapterId,
-				name = subtitle,
+				title = subtitle,
 				number = chapter.getString("name")
 					.substringAfter("#")
 					.toFloatOrNull() ?: -1f,

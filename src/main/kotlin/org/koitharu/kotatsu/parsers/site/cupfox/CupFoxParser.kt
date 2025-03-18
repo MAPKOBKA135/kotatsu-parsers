@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.cupfox
 
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
@@ -13,7 +13,7 @@ internal abstract class CupFoxParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 24,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -95,16 +95,15 @@ internal abstract class CupFoxParser(
 			Manga(
 				id = generateUid(href),
 				title = li.selectFirst("h3, h4, p.dm-bn")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
-				coverUrl = li.selectFirst(selectMangasCover)
-					?.src().orEmpty(),
+				contentRating = null,
+				coverUrl = li.selectFirst(selectMangasCover)?.src(),
 				tags = setOf(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -123,8 +122,11 @@ internal abstract class CupFoxParser(
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val author = doc.selectFirst(selectMangaDetailsAuthor)?.text()?.substringAfter("：")?.nullIfEmpty()
 		return manga.copy(
-			altTitle = doc.selectFirst(selectMangaDetailsAltTitle)?.text()?.substringAfter("：")?.nullIfEmpty(),
+			altTitles = setOfNotNull(
+				doc.selectFirst(selectMangaDetailsAltTitle)?.text()?.substringAfter("：")?.nullIfEmpty(),
+			),
 			tags = doc.select(selectMangaDetailsTags).mapToSet { a ->
 				MangaTag(
 					key = a.attr("href").removeSuffix('/').substringAfterLast('/'),
@@ -132,7 +134,7 @@ internal abstract class CupFoxParser(
 					source = source,
 				)
 			},
-			author = doc.selectFirst(selectMangaDetailsAuthor)?.text()?.substringAfter("：")?.nullIfEmpty(),
+			authors = setOfNotNull(author),
 			description = doc.selectFirst(selectMangaDescription)?.html(),
 			chapters = doc.select(selectMangaChapters)
 				.mapChapters { i, li ->
@@ -140,7 +142,7 @@ internal abstract class CupFoxParser(
 					val href = a.attrAsRelativeUrl("href")
 					MangaChapter(
 						id = generateUid(href),
-						name = a.text(),
+						title = a.text(),
 						number = i + 1f,
 						volume = 0,
 						url = href,
@@ -161,15 +163,15 @@ internal abstract class CupFoxParser(
 				Manga(
 					id = generateUid(href),
 					title = li.selectFirst("h3, h4, p.dm-bn")?.text().orEmpty(),
-					altTitle = null,
+					altTitles = emptySet(),
 					url = href,
 					publicUrl = href.toAbsoluteUrl(domain),
 					rating = RATING_UNKNOWN,
-					isNsfw = false,
-					coverUrl = li.selectFirst(selectMangasCover)?.src().orEmpty(),
+					contentRating = null,
+					coverUrl = li.selectFirst(selectMangasCover)?.src(),
 					tags = setOf(),
 					state = null,
-					author = null,
+					authors = emptySet(),
 					source = source,
 				)
 			}

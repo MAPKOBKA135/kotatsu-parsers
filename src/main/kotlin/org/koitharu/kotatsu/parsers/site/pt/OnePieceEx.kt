@@ -3,15 +3,16 @@ package org.koitharu.kotatsu.parsers.site.pt
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @Broken
 @MangaSourceParser("ONEPIECEEX", "OnePieceEx", "pt")
-internal class OnePieceEx(context: MangaLoaderContext) : SinglePageMangaParser(context, MangaParserSource.ONEPIECEEX) {
+internal class OnePieceEx(context: MangaLoaderContext) :
+	LegacySinglePageMangaParser(context, MangaParserSource.ONEPIECEEX) {
 
 	override val configKeyDomain = ConfigKey.Domain("onepieceex.net")
 
@@ -35,7 +36,7 @@ internal class OnePieceEx(context: MangaLoaderContext) : SinglePageMangaParser(c
 				publicUrl = "https://$domain/mangas/leitor/",
 				title = "One Piece",
 				coverUrl = "https://$domain/mangareader/sbs/capa/preview/Volume_1.jpg",
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = "Um romance marítimo pelo \"One Piece\"!!! Estamos na Grande " +
@@ -44,8 +45,8 @@ internal class OnePieceEx(context: MangaLoaderContext) : SinglePageMangaParser(c
 					"que almeja ser pirata, embarca numa jornada com o sonho de se tornar " +
 					"o Rei dos Piratas!!! (Fonte: MANGA Plus)",
 				state = MangaState.ONGOING,
-				author = "Eiichiro Oda",
-				isNsfw = false,
+				authors = setOf("Eiichiro Oda"),
+				contentRating = null,
 				source = source,
 			),
 
@@ -55,7 +56,7 @@ internal class OnePieceEx(context: MangaLoaderContext) : SinglePageMangaParser(c
 				publicUrl = "https://$domain/sbs/",
 				title = "One Piece",
 				coverUrl = "https://$domain/mangareader/sbs/capa/preview/nao.jpg",
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = "O SBS é uma coluna especial encontrada na maioria dos " +
@@ -64,8 +65,8 @@ internal class OnePieceEx(context: MangaLoaderContext) : SinglePageMangaParser(c
 					"Eiichiro Oda respondendo as cartas de fãs sobre uma grande variedade " +
 					"de assuntos. (Fonte: One Piece Wiki)",
 				state = null,
-				author = "Eiichiro Oda",
-				isNsfw = false,
+				authors = setOf("Eiichiro Oda"),
+				contentRating = null,
 				source = source,
 			),
 		)
@@ -81,7 +82,7 @@ internal class OnePieceEx(context: MangaLoaderContext) : SinglePageMangaParser(c
 					val href = a.attrAsRelativeUrl("value")
 					MangaChapter(
 						id = generateUid(href),
-						name = a.text(),
+						title = a.text(),
 						number = i + 1f,
 						volume = 0,
 						url = href,
@@ -101,7 +102,7 @@ internal class OnePieceEx(context: MangaLoaderContext) : SinglePageMangaParser(c
 					val href = a.attrAsRelativeUrl("href")
 					MangaChapter(
 						id = generateUid(href),
-						name = a.text(),
+						title = a.text(),
 						number = i + 1f,
 						volume = 0,
 						url = href,

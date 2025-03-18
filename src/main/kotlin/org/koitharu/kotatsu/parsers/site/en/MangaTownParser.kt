@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.en
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -12,7 +12,7 @@ import java.util.*
 
 @MangaSourceParser("MANGATOWN", "MangaTown", "en")
 internal class MangaTownParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.MANGATOWN, 30) {
+	LegacyPagedMangaParser(context, MangaParserSource.MANGATOWN, 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("www.mangatown.com")
 
@@ -110,17 +110,18 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 			val views = li.select("p.view")
 			val status = views.firstNotNullOfOrNull { it.ownText().takeIf { x -> x.startsWith("Status:") } }
 				?.substringAfter(':')?.trim()?.lowercase(Locale.ROOT)
+			val author = views.firstNotNullOfOrNull { it.text().takeIf { x -> x.startsWith("Author:") } }
+				?.substringAfter(':')
+				?.trim()
 			Manga(
 				id = generateUid(href),
 				title = a.attr("title"),
-				coverUrl = a.selectFirst("img")?.absUrl("src").orEmpty(),
+				coverUrl = a.selectFirst("img")?.attrAsAbsoluteUrlOrNull("src"),
 				source = MangaParserSource.MANGATOWN,
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = li.selectFirst("p.score")?.selectFirst("b")
 					?.ownText()?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
-				author = views.firstNotNullOfOrNull { it.text().takeIf { x -> x.startsWith("Author:") } }
-					?.substringAfter(':')
-					?.trim(),
+				authors = setOfNotNull(author),
 				state = when (status) {
 					"ongoing" -> MangaState.ONGOING
 					"completed" -> MangaState.FINISHED
@@ -134,7 +135,7 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 					)
 				}.orEmpty(),
 				url = href,
-				isNsfw = false,
+				contentRating = null,
 				publicUrl = href.toAbsoluteUrl(a.host ?: domain),
 			)
 		}
@@ -175,7 +176,7 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 						dateFormat,
 						li.selectFirst("span.time")?.text(),
 					),
-					name = name.ifEmpty { "${manga.title} - ${i + 1}" },
+					title = name.nullIfEmpty(),
 					scanlator = null,
 					branch = null,
 				)
@@ -272,7 +273,7 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 					dateFormat,
 					li.selectFirst("span.time")?.text(),
 				),
-				name = name.ifEmpty { "${manga.title} - ${i + 1}" },
+				title = name.nullIfEmpty(),
 				scanlator = null,
 				branch = null,
 			)

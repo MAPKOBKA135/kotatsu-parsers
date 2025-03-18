@@ -8,8 +8,8 @@ import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
@@ -17,7 +17,7 @@ import java.util.*
 @Broken
 @MangaSourceParser("PURURIN", "Pururin", "en", ContentType.HENTAI)
 internal class Pururin(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.PURURIN, pageSize = 20) {
+	LegacyPagedMangaParser(context, MangaParserSource.PURURIN, pageSize = 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("pururin.to")
 
@@ -94,15 +94,15 @@ internal class Pururin(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = a.selectFirst("img.card-img-top")?.src().orEmpty(),
+				coverUrl = a.selectFirst("img.card-img-top")?.src(),
 				title = a.selectFirst(".title")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -133,6 +133,7 @@ internal class Pururin(context: MangaLoaderContext) :
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
+		val author = doc.selectFirst("a[itemprop=author]")?.text()
 		manga.copy(
 			description = doc.selectFirst("p.mb-2")?.text().orEmpty(),
 			rating = doc.selectFirst("td span.rating")?.attr("content")?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
@@ -144,11 +145,11 @@ internal class Pururin(context: MangaLoaderContext) :
 					source = source,
 				)
 			},
-			author = doc.selectFirst("a[itemprop=author]")?.text(),
+			authors = setOfNotNull(author),
 			chapters = listOf(
 				MangaChapter(
 					id = manga.id,
-					name = manga.title,
+					title = manga.title,
 					number = 1f,
 					volume = 0,
 					url = manga.url,
@@ -170,15 +171,15 @@ internal class Pururin(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = a.selectFirst("img.card-img-top")?.src().orEmpty(),
+				coverUrl = a.selectFirst("img.card-img-top")?.src(),
 				title = a.selectFirst(".title")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = false,
+				contentRating = null,
 			)
 		}
 	}

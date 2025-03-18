@@ -6,40 +6,12 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.model.ContentRating
-import org.koitharu.kotatsu.parsers.model.ContentType
-import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.model.MangaChapter
-import org.koitharu.kotatsu.parsers.model.MangaListFilter
-import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
-import org.koitharu.kotatsu.parsers.model.MangaListFilterOptions
-import org.koitharu.kotatsu.parsers.model.MangaPage
-import org.koitharu.kotatsu.parsers.model.MangaParserSource
-import org.koitharu.kotatsu.parsers.model.MangaState
-import org.koitharu.kotatsu.parsers.model.MangaTag
-import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
-import org.koitharu.kotatsu.parsers.model.SortOrder
-import org.koitharu.kotatsu.parsers.util.attrAsRelativeUrl
-import org.koitharu.kotatsu.parsers.util.attrOrNull
-import org.koitharu.kotatsu.parsers.util.attrOrThrow
-import org.koitharu.kotatsu.parsers.util.domain
-import org.koitharu.kotatsu.parsers.util.generateUid
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.model.*
+import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.mapJSONNotNull
-import org.koitharu.kotatsu.parsers.util.mapChapters
-import org.koitharu.kotatsu.parsers.util.mapToSet
-import org.koitharu.kotatsu.parsers.util.oneOrThrowIfMany
-import org.koitharu.kotatsu.parsers.util.parseHtml
-import org.koitharu.kotatsu.parsers.util.parseJson
-import org.koitharu.kotatsu.parsers.util.selectFirstOrThrow
-import org.koitharu.kotatsu.parsers.util.src
-import org.koitharu.kotatsu.parsers.util.textOrNull
-import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
-import org.koitharu.kotatsu.parsers.util.toRelativeUrl
-import org.koitharu.kotatsu.parsers.util.toTitleCase
-import org.koitharu.kotatsu.parsers.util.urlEncoded
-import java.util.EnumSet
+import java.util.*
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.IvParameterSpec
@@ -47,10 +19,11 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 @MangaSourceParser("VCOMYCS", "Vcomycs", "vi", ContentType.MANGA)
-internal class VcomycsParser(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.VCOMYCS, 36) {
+internal class VcomycsParser(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.VCOMYCS, 36) {
 
 	override val configKeyDomain: ConfigKey.Domain
-		get() = ConfigKey.Domain("vivicomi.shop")
+		get() = ConfigKey.Domain("vivicomi.one")
 
 	override val availableSortOrders: Set<SortOrder>
 		get() = EnumSet.of(SortOrder.UPDATED)
@@ -94,7 +67,7 @@ internal class VcomycsParser(context: MangaLoaderContext) : PagedMangaParser(con
 					Manga(
 						id = generateUid(relativeUrl),
 						title = jo.getString("title"),
-						altTitle = null,
+						altTitles = emptySet(),
 						url = relativeUrl,
 						publicUrl = relativeUrl.toAbsoluteUrl(domain),
 						rating = RATING_UNKNOWN,
@@ -102,7 +75,7 @@ internal class VcomycsParser(context: MangaLoaderContext) : PagedMangaParser(con
 						coverUrl = jo.getString("img"),
 						tags = emptySet(),
 						state = null,
-						author = null,
+						authors = emptySet(),
 						largeCoverUrl = null,
 						description = null,
 						chapters = null,
@@ -128,7 +101,7 @@ internal class VcomycsParser(context: MangaLoaderContext) : PagedMangaParser(con
 				Manga(
 					id = generateUid(relativeUrl),
 					title = linkEl.attrOrThrow("title"),
-					altTitle = null,
+					altTitles = emptySet(),
 					url = relativeUrl,
 					publicUrl = relativeUrl.toAbsoluteUrl(domain),
 					rating = RATING_UNKNOWN,
@@ -136,7 +109,7 @@ internal class VcomycsParser(context: MangaLoaderContext) : PagedMangaParser(con
 					coverUrl = linkEl.selectFirstOrThrow(".img-thumbnail").src(),
 					tags = emptySet(),
 					state = null,
-					author = null,
+					authors = emptySet(),
 					largeCoverUrl = null,
 					description = null,
 					chapters = null,
@@ -148,6 +121,8 @@ internal class VcomycsParser(context: MangaLoaderContext) : PagedMangaParser(con
 	override suspend fun getDetails(manga: Manga): Manga {
 		val content = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val info = content.selectFirstOrThrow(".comic-info")
+		val author =
+			info.selectFirst(".comic-intro-text > strong:contains(Tác giả:)")?.nextElementSibling()?.textOrNull()
 		return manga.copy(
 			rating = info.getElementById("cate-rating")?.let {
 				val score = it.attrOrNull("data-score")?.toIntOrNull()
@@ -155,10 +130,11 @@ internal class VcomycsParser(context: MangaLoaderContext) : PagedMangaParser(con
 				if (score == null || vote == null || vote == 0) return@let null
 				score / (vote * 10f)
 			} ?: RATING_UNKNOWN,
-			altTitle = info.selectFirst(".comic-intro-text > strong:contains(Tên khác:)")?.nextElementSibling()
-				?.textOrNull(),
-			author = info.selectFirst(".comic-intro-text > strong:contains(Tác giả:)")?.nextElementSibling()
-				?.textOrNull(),
+			altTitles = setOfNotNull(
+				info.selectFirst(".comic-intro-text > strong:contains(Tên khác:)")?.nextElementSibling()
+					?.textOrNull(),
+			),
+			authors = setOfNotNull(author),
 			state = when (info.selectFirst(".comic-stt")?.text()) {
 				"Đang tiến hành" -> MangaState.ONGOING
 				"Trọn bộ" -> MangaState.FINISHED
@@ -179,7 +155,7 @@ internal class VcomycsParser(context: MangaLoaderContext) : PagedMangaParser(con
 					val url = element.attrAsRelativeUrl("href")
 					MangaChapter(
 						id = generateUid(url),
-						name = element.selectFirst("span")?.text().orEmpty().trim(),
+						title = element.selectFirst("span")?.textOrNull(),
 						number = index + 1f,
 						volume = 0,
 						url = url,

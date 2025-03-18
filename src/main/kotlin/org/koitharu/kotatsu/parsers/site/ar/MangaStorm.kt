@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.ar
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -12,7 +12,8 @@ import java.util.*
 
 @Broken
 @MangaSourceParser("MANGASTORM", "MangaStorm", "ar")
-internal class MangaStorm(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MANGASTORM, 30) {
+internal class MangaStorm(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.MANGASTORM, 30) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.POPULARITY, SortOrder.UPDATED)
 	override val configKeyDomain = ConfigKey.Domain("mangastorm.org")
@@ -70,15 +71,15 @@ internal class MangaStorm(context: MangaLoaderContext) : PagedMangaParser(contex
 			Manga(
 				id = generateUid(href),
 				title = div.select(".manga-ct-title").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
-				coverUrl = div.selectFirstOrThrow("img").src().orEmpty(),
+				contentRating = null,
+				coverUrl = div.selectFirstOrThrow("img").src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -100,7 +101,7 @@ internal class MangaStorm(context: MangaLoaderContext) : PagedMangaParser(contex
 				val url = a.attrAsRelativeUrl("href")
 				MangaChapter(
 					id = generateUid(url),
-					name = a.text(),
+					title = a.text(),
 					number = i + 1f,
 					volume = 0,
 					url = url,

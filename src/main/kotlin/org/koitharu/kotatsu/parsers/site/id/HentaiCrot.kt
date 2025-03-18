@@ -2,15 +2,15 @@ package org.koitharu.kotatsu.parsers.site.id
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("HENTAICROT", "HentaiCrot", "id", ContentType.HENTAI)
 internal class HentaiCrot(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.HENTAICROT, 8) {
+	LegacyPagedMangaParser(context, MangaParserSource.HENTAICROT, 8) {
 
 	override val configKeyDomain = ConfigKey.Domain("hentaicrot.com")
 
@@ -66,15 +66,15 @@ internal class HentaiCrot(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src()?.replace("-200x285", "").orEmpty(),
+				coverUrl = div.selectFirst("img")?.src()?.replace("-200x285", ""),
 				title = div.selectFirst("h2")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -95,15 +95,18 @@ internal class HentaiCrot(context: MangaLoaderContext) :
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
+		val author = doc.selectFirst("div.entry-content ul li:contains(Artists :) em")?.textOrNull()
 		return manga.copy(
 			description = doc.selectFirst("div.entry-content p")?.html(),
-			altTitle = doc.selectFirst("div.entry-content ul li:contains(Alternative Name(s) :) em")?.textOrNull(),
-			author = doc.selectFirst("div.entry-content ul li:contains(Artists :) em")?.textOrNull(),
+			altTitles = setOfNotNull(
+				doc.selectFirst("div.entry-content ul li:contains(Alternative Name(s) :) em")?.textOrNull(),
+			),
+			authors = setOfNotNull(author),
 			state = null,
 			chapters = listOf(
 				MangaChapter(
 					id = manga.id,
-					name = manga.title,
+					title = manga.title,
 					number = 1f,
 					volume = 0,
 					url = fullUrl,

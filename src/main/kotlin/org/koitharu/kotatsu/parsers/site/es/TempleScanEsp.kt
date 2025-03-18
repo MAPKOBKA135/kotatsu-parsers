@@ -3,11 +3,12 @@ package org.koitharu.kotatsu.parsers.site.es
 import kotlinx.coroutines.coroutineScope
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
+import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
 import org.koitharu.kotatsu.parsers.util.json.mapJSON
 import java.text.DateFormat
 import java.text.SimpleDateFormat
@@ -15,7 +16,7 @@ import java.util.*
 
 @MangaSourceParser("TEMPLESCANESP", "TempleScanEsp", "es", ContentType.HENTAI)
 internal class TempleScanEsp(context: MangaLoaderContext) :
-	SinglePageMangaParser(context, MangaParserSource.TEMPLESCANESP) {
+	LegacySinglePageMangaParser(context, MangaParserSource.TEMPLESCANESP) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST_ASC)
 
@@ -41,15 +42,15 @@ internal class TempleScanEsp(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href,
-				coverUrl = it.getString("urlImg").orEmpty(),
+				coverUrl = it.getString("urlImg"),
 				title = it.getString("name").orEmpty(),
-				altTitle = it.getString("alternativeName").orEmpty(),
+				altTitles = setOfNotNull(it.getStringOrNull("alternativeName")),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -65,7 +66,7 @@ internal class TempleScanEsp(context: MangaLoaderContext) :
 					val href = a.attrAsRelativeUrl("href")
 					MangaChapter(
 						id = generateUid(href),
-						name = a.selectFirst("span")?.text() ?: "Capítulo ${i + 1f}",
+						title = a.selectFirst("span")?.textOrNull(),
 						number = i + 1f,
 						volume = 0,
 						url = href,

@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.en
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -11,7 +11,7 @@ import java.util.*
 
 @MangaSourceParser("BEETOON", "BeeToon.net", "en")
 internal class BeeToon(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.BEETOON, pageSize = 30) {
+	LegacyPagedMangaParser(context, MangaParserSource.BEETOON, pageSize = 30) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED, SortOrder.POPULARITY)
 
@@ -73,19 +73,19 @@ internal class BeeToon(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = div.selectFirst(".name")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirst(".counter")?.text()?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = when (div.selectLastOrThrow(".status span").text()) {
 					"Ongoing" -> MangaState.ONGOING
 					"Completed" -> MangaState.FINISHED
 					else -> null
 				},
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -103,6 +103,7 @@ internal class BeeToon(context: MangaLoaderContext) :
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val author = doc.selectFirst(".info .author a")?.text()
 		return manga.copy(
 			description = doc.getElementById("desc")?.text().orEmpty(),
 			rating = doc.selectFirst(".counter")?.text()?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
@@ -113,12 +114,12 @@ internal class BeeToon(context: MangaLoaderContext) :
 					source = source,
 				)
 			},
-			author = doc.selectFirst(".info .author a")?.text(),
+			authors = setOfNotNull(author),
 			chapters = doc.select(".items-chapters  a").mapChapters(reversed = true) { i, a ->
 				val url = a.attrAsRelativeUrl("href").toAbsoluteUrl(domain)
 				MangaChapter(
 					id = generateUid(url),
-					name = a.selectFirstOrThrow(".chap").text(),
+					title = a.selectFirstOrThrow(".chap").text(),
 					number = i + 1f,
 					volume = 0,
 					url = url,

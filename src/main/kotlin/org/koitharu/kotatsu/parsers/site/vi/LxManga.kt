@@ -1,18 +1,17 @@
 package org.koitharu.kotatsu.parsers.site.vi
 
-import androidx.collection.arraySetOf
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
+internal class LxManga(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
-	override val configKeyDomain = ConfigKey.Domain("lxmanga.cloud")
+	override val configKeyDomain = ConfigKey.Domain("lxmanga.wiki")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -132,15 +131,15 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			Manga(
 				id = generateUid(href),
 				title = div.select("div.p-2 a.text-ellipsis").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = true,
+				contentRating = ContentRating.ADULT,
 				coverUrl = coverUrl,
 				tags = setOf(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -148,9 +147,10 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val root = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val author = root.selectFirst("div.mt-2:contains(Tác giả) span a")?.textOrNull()
 
 		return manga.copy(
-			altTitle = root.selectLast("div.grow div:contains(Tên khác) span")?.textOrNull(),
+			altTitles = setOfNotNull(root.selectLast("div.grow div:contains(Tên khác) span")?.textOrNull()),
 			state = when (root.selectFirst("div.mt-2:contains(Tình trạng) span.text-blue-500")?.text()) {
 				"Đang tiến hành" -> MangaState.ONGOING
 				"Đã hoàn thành" -> MangaState.FINISHED
@@ -163,7 +163,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 					source = source,
 				)
 			},
-			author = root.selectFirst("div.mt-2:contains(Tác giả) span a")?.textOrNull(),
+			authors = setOfNotNull(author),
 			description = root.selectFirst("meta[name=description]")?.attrOrNull("content"),
 			chapters = root.select("div.justify-between ul.overflow-y-auto.overflow-x-hidden a")
 				.mapChapters(reversed = true) { i, a ->
@@ -174,7 +174,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 					MangaChapter(
 						id = generateUid(href),
-						name = name,
+						title = name,
 						number = i.toFloat(),
 						volume = 0,
 						url = href,
@@ -211,13 +211,13 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
 		val doc = webClient.httpGet(url).parseHtml()
-		
+
 		return doc.select("nav.grid.grid-cols-3.md\\:grid-cols-8 button").map { button ->
 			val key = button.attr("wire:click").substringAfterLast(", '").substringBeforeLast("')")
 			MangaTag(
 				key = key,
 				title = button.select("span.text-ellipsis").text(),
-				source = source
+				source = source,
 			)
 		}.toSet()
 	}

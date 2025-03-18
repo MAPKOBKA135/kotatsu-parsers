@@ -88,7 +88,7 @@ internal class Komikcast(context: MangaLoaderContext) :
 			val url = element.selectFirst("a.chapter-link-item")?.attrAsRelativeUrl("href") ?: return@mapChapters null
 			MangaChapter(
 				id = generateUid(url),
-				name = element.selectFirst("a.chapter-link-item")?.ownText().orEmpty(),
+				title = element.selectFirst("a.chapter-link-item")?.ownTextOrNull(),
 				url = url,
 				number = index + 1f,
 				volume = 0,
@@ -123,7 +123,7 @@ internal class Komikcast(context: MangaLoaderContext) :
 		return manga.copy(
 			description = docs.selectFirst("div.komik_info-description-sinopsis")?.text(),
 			state = mangaState,
-			author = author,
+			authors = setOfNotNull(author),
 			contentRating = if (manga.isNsfw || nsfw) {
 				ContentRating.ADULT
 			} else {
@@ -144,14 +144,14 @@ internal class Komikcast(context: MangaLoaderContext) :
 				id = generateUid(relativeUrl),
 				url = relativeUrl,
 				title = name,
-				altTitle = null,
+				altTitles = emptySet(),
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				rating = rating,
-				isNsfw = isNsfwSource,
-				coverUrl = it.selectFirst("img.ts-post-image")?.src().orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = it.selectFirst("img.ts-post-image")?.src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}

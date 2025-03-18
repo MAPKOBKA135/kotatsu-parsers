@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.en
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -11,7 +11,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("COMICEXTRA", "ComicExtra", "en", ContentType.COMICS)
-internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.COMICEXTRA, 36) {
+internal class ComicExtra(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.COMICEXTRA, 36) {
 
 	override val configKeyDomain = ConfigKey.Domain("azcomix.me")
 
@@ -70,11 +71,11 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 			Manga(
 				id = generateUid(href),
 				title = div.selectFirstOrThrow("a.egb-serie").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
+				contentRating = null,
 				coverUrl = div.selectFirstOrThrow("img").attrAsAbsoluteUrl("src"),
 				tags = div.select("div.egb-details a").mapToSet { a ->
 					MangaTag(
@@ -84,7 +85,7 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 					)
 				},
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -103,8 +104,9 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val author = doc.selectFirst("table.full-table tr:contains(Author:) td:nth-child(2)")?.textOrNull()
 		return manga.copy(
-			altTitle = doc.selectFirstOrThrow("div.anime-top h1.title").textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirstOrThrow("div.anime-top h1.title").textOrNull()),
 			state = when (doc.selectFirstOrThrow("ul.anime-genres li.status a").text()) {
 				"Ongoing" -> MangaState.ONGOING
 				"Completed" -> MangaState.FINISHED
@@ -117,7 +119,7 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 					source = source,
 				)
 			},
-			author = doc.selectFirst("table.full-table tr:contains(Author:) td:nth-child(2)")?.textOrNull(),
+			authors = setOfNotNull(author),
 			description = doc.selectFirstOrThrow("div.detail-desc-content p").html(),
 			chapters = doc.select("ul.basic-list li").let { elements ->
 				elements.mapChapters { i, li ->
@@ -134,7 +136,7 @@ internal class ComicExtra(context: MangaLoaderContext) : PagedMangaParser(contex
 					}
 					MangaChapter(
 						id = generateUid(url),
-						name = name,
+						title = name,
 						number = elements.size - i.toFloat(),
 						volume = 0,
 						url = url,

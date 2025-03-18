@@ -2,14 +2,15 @@ package org.koitharu.kotatsu.parsers.site.pt
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("MUITOHENTAI", "MuitoHentai", "pt", ContentType.HENTAI)
-internal class MuitoHentai(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MUITOHENTAI, 24) {
+internal class MuitoHentai(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.MUITOHENTAI, 24) {
 
 	override val configKeyDomain = ConfigKey.Domain("www.muitohentai.com")
 
@@ -65,13 +66,13 @@ internal class MuitoHentai(context: MangaLoaderContext) : PagedMangaParser(conte
 				publicUrl = href,
 				title = div.selectLastOrThrow("h3").text(),
 				coverUrl = div.selectFirst("img")?.src().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -103,7 +104,7 @@ internal class MuitoHentai(context: MangaLoaderContext) : PagedMangaParser(conte
 				val href = a.attrAsAbsoluteUrl("href")
 				MangaChapter(
 					id = generateUid(href),
-					name = a.text(),
+					title = a.text(),
 					number = i + 1f,
 					volume = 0,
 					url = href,
@@ -125,7 +126,7 @@ internal class MuitoHentai(context: MangaLoaderContext) : PagedMangaParser(conte
 			.map { url ->
 				if (url.startsWith("https://$domain/")) {
 					url.substringAfter("$domain/")
-				} else url	
+				} else url
 			}
 
 		return src.map { url ->
@@ -133,7 +134,7 @@ internal class MuitoHentai(context: MangaLoaderContext) : PagedMangaParser(conte
 				id = generateUid(url),
 				url = url.takeUnless { it.startsWith("https://") }?.let { "https://$domain/$it" } ?: url,
 				preview = null,
-				source = source
+				source = source,
 			)
 		}
 	}

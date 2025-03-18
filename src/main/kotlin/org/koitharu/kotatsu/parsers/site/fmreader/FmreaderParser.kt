@@ -4,8 +4,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -17,7 +17,7 @@ internal abstract class FmreaderParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 20,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -142,15 +142,15 @@ internal abstract class FmreaderParser(
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
 				coverUrl = (div.selectFirst("div.img-in-ratio")?.attr("data-bg")
 					?: div.selectFirst("div.img-in-ratio")?.attr("style")?.substringAfter("(")
-						?.substringBefore(")"))?.toAbsoluteUrl(domain).orEmpty(),
+						?.substringBefore(")"))?.toAbsoluteUrl(domain),
 				title = div.selectFirst("div.series-title")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -190,7 +190,7 @@ internal abstract class FmreaderParser(
 			}
 		}
 		val alt = doc.body().selectFirst(selectAlt)?.text()?.replace("Other names", "")?.nullIfEmpty()
-		val auth = doc.body().selectFirst(selectAut)?.textOrNull()
+		val author = doc.body().selectFirst(selectAut)?.textOrNull()
 		manga.copy(
 			tags = doc.body().select(selectTag).mapToSet { a ->
 				MangaTag(
@@ -200,8 +200,8 @@ internal abstract class FmreaderParser(
 				)
 			},
 			description = desc,
-			altTitle = alt,
-			author = auth,
+			altTitles = setOfNotNull(alt),
+			authors = setOfNotNull(author),
 			state = state,
 			chapters = chaptersDeferred.await(),
 		)
@@ -218,7 +218,7 @@ internal abstract class FmreaderParser(
 			val dateText = a.selectFirst(selectDate)?.text()
 			MangaChapter(
 				id = generateUid(href),
-				name = a.selectFirstOrThrow("div.chapter-name").text(),
+				title = a.selectFirstOrThrow("div.chapter-name").text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

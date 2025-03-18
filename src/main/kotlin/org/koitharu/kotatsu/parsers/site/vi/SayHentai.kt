@@ -2,16 +2,17 @@ package org.koitharu.kotatsu.parsers.site.vi
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("SAYHENTAI", "SayHentai", "vi", ContentType.HENTAI)
-internal class SayHentai(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.SAYHENTAI, 20) {
-	override val configKeyDomain = ConfigKey.Domain("sayhentai.art")
+internal class SayHentai(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.SAYHENTAI, 20) {
+	override val configKeyDomain = ConfigKey.Domain("sayhentai.ink")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -73,22 +74,23 @@ internal class SayHentai(context: MangaLoaderContext) : PagedMangaParser(context
 				publicUrl = href.toAbsoluteUrl(domain),
 				title = element.selectFirst(".item-summary a")?.text().orEmpty(),
 				coverUrl = element.selectFirst(".item-thumb img")?.src().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val author = doc.selectFirst("div.summary-heading:contains(Tác giả) + div.summary-content")?.textOrNull()
 		return manga.copy(
-			altTitle = doc.selectFirst("h2.other-name")?.textOrNull(),
-			author = doc.selectFirst("div.summary-heading:contains(Tác giả) + div.summary-content")?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst("h2.other-name")?.textOrNull()),
+			authors = setOfNotNull(author),
 			tags = doc.select("div.genres-content a[rel=tag]").mapToSet { a ->
 				MangaTag(
 					key = a.attr("href").substringAfterLast('/'),
@@ -107,7 +109,7 @@ internal class SayHentai(context: MangaLoaderContext) : PagedMangaParser(context
 				val a = element.selectFirst("a") ?: return@mapChapters null
 				MangaChapter(
 					id = generateUid(a.attrAsRelativeUrl("href")),
-					name = a.text(),
+					title = a.text(),
 					number = i + 1f,
 					url = a.attrAsRelativeUrl("href"),
 					uploadDate = parseChapterDate(element.selectFirst("span.chapter-release-date")?.text()),
@@ -176,7 +178,7 @@ internal class SayHentai(context: MangaLoaderContext) : PagedMangaParser(context
 		.mapToSet { a ->
 			val title = a.ownText().toTitleCase(sourceLocale)
 			MangaTag(
-				key = a.attr("href").substringAfterLast("/"),
+				key = a.attr("href").substringAfterLast('/'),
 				title = title,
 				source = source,
 			)

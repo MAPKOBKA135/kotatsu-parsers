@@ -4,8 +4,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.mapJSON
@@ -14,7 +14,7 @@ import java.util.*
 
 @MangaSourceParser("LEGACY_SCANS", "LegacyScans", "fr")
 internal class LegacyScansParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.LEGACY_SCANS, 18) {
+	LegacyPagedMangaParser(context, MangaParserSource.LEGACY_SCANS, 18) {
 
 	override val configKeyDomain = ConfigKey.Domain("legacy-scans.com")
 
@@ -132,15 +132,15 @@ internal class LegacyScansParser(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(urlManga),
 				title = j.getString("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = urlManga,
 				publicUrl = urlManga,
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
+				contentRating = null,
 				coverUrl = "https://api.$domain/" + j.getString("cover"),
 				tags = setOf(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -153,15 +153,15 @@ internal class LegacyScansParser(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(urlManga),
 				title = j.getString("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = urlManga,
 				publicUrl = urlManga,
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
-				coverUrl = "",
+				contentRating = null,
+				coverUrl = null,
 				tags = setOf(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -170,6 +170,7 @@ internal class LegacyScansParser(context: MangaLoaderContext) :
 	override suspend fun getDetails(manga: Manga): Manga {
 		val root = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.FRENCH)
+		val author = root.select("div.serieAdd p:contains(Auteur:) strong").textOrNull()
 		return manga.copy(
 			tags = root.select("div.serieGenre span").mapToSet { span ->
 				MangaTag(
@@ -178,17 +179,17 @@ internal class LegacyScansParser(context: MangaLoaderContext) :
 					source = source,
 				)
 			},
-			coverUrl = root.selectFirst("div.serieImg img")?.attr("src"),
-			author = root.select("div.serieAdd p:contains(Auteur:) strong").textOrNull(),
+			coverUrl = root.selectFirst("div.serieImg img")?.attrAsAbsoluteUrlOrNull("src"),
+			authors = setOfNotNull(author),
 			description = root.selectFirst("div.serieDescription div")?.html(),
 			chapters = root.select("div.chapterList a")
 				.mapChapters(reversed = true) { i, a ->
 					val href = a.attrAsRelativeUrl("href")
-					val name = a.selectFirst("span")?.text()
+					val name = a.selectFirst("span")?.textOrNull()
 					val dateText = a.selectLast("span")?.text() ?: "0"
 					MangaChapter(
 						id = generateUid(href),
-						name = name ?: "Chapitre : ${i + 1f}",
+						title = name,
 						number = i + 1f,
 						volume = 0,
 						url = href,

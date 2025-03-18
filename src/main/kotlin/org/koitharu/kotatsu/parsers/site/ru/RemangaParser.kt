@@ -10,8 +10,8 @@ import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ContentUnavailableException
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
@@ -29,7 +29,7 @@ private const val TOO_MANY_REQUESTS = 429
 @MangaSourceParser("REMANGA", "Реманга", "ru")
 internal class RemangaParser(
 	context: MangaLoaderContext,
-) : PagedMangaParser(context, MangaParserSource.REMANGA, PAGE_SIZE), MangaParserAuthProvider, Interceptor {
+) : LegacyPagedMangaParser(context, MangaParserSource.REMANGA, PAGE_SIZE), MangaParserAuthProvider, Interceptor {
 
 	private val baseHeaders: Headers
 		get() = Headers.Builder()
@@ -111,12 +111,12 @@ internal class RemangaParser(
 				url = url,
 				publicUrl = "https://$domain$url",
 				title = jo.getString("rus_name"),
-				altTitle = jo.getString("en_name"),
+				altTitles = setOfNotNull(jo.getStringOrNull("en_name")),
 				rating = jo.getString("avg_rating").toFloatOrNull()?.div(10f) ?: RATING_UNKNOWN,
 				coverUrl = "https://api.$domain${img.getString("mid")}",
 				largeCoverUrl = "https://api.$domain${img.getString("high")}",
-				author = null,
-				isNsfw = false,
+				authors = emptySet(),
+				contentRating = null,
 				state = null,
 				tags = jo.optJSONArray("genres")?.mapJSONToSet { g ->
 					MangaTag(
@@ -176,17 +176,7 @@ internal class RemangaParser(
 					url = "/api/titles/chapters/$id/",
 					number = jo.getIntOrDefault("index", chapters.size - i).toFloat(),
 					volume = 0,
-					name = buildString {
-						append("Том ")
-						append(jo.optString("tome", "0"))
-						append(". ")
-						append("Глава ")
-						append(jo.optString("chapter", "0"))
-						if (name.isNotEmpty()) {
-							append(" - ")
-							append(name)
-						}
-					},
+					title = name.nullIfEmpty(),
 					uploadDate = dateFormat.tryParse(jo.getString("upload_date")),
 					scanlator = publishers?.optJSONObject(0)?.getStringOrNull("name"),
 					source = MangaParserSource.REMANGA,

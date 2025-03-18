@@ -4,8 +4,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -16,7 +16,7 @@ internal abstract class Manga18Parser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 20,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -103,19 +103,22 @@ internal abstract class Manga18Parser(
 	protected open fun parseMangaList(doc: Document): List<Manga> {
 		return doc.select("div.story_item").map { div ->
 			val href = div.selectFirstOrThrow("a").attrAsRelativeUrl("href")
+			val title = div.selectFirst("div.mg_info")?.selectFirst("div.mg_name a")?.text()
+				?: div.selectFirst("a")?.attr("title")
+				?: "No name"
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
-				title = div.selectFirst("div.mg_info")?.selectFirst("div.mg_name a")?.text().orEmpty(),
-				altTitle = null,
+				coverUrl = div.selectFirst("img")?.src(),
+				title = title,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -165,8 +168,8 @@ internal abstract class Manga18Parser(
 				)
 			},
 			description = desc?.nullIfEmpty(),
-			altTitle = alt,
-			author = author,
+			altTitles = setOfNotNull(alt),
+			authors = setOfNotNull(author),
 			state = state,
 			chapters = chaptersDeferred.await(),
 		)
@@ -184,7 +187,7 @@ internal abstract class Manga18Parser(
 			val dateText = li.selectFirst(selectDate)?.text()
 			MangaChapter(
 				id = generateUid(href),
-				name = a.text(),
+				title = a.textOrNull(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

@@ -66,15 +66,16 @@ internal class PapScan(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirstOrThrow("div.product__item__pic").attr("data-setbg").orEmpty(),
+				coverUrl = div.selectFirstOrThrow("div.product__item__pic")
+					.attrAsAbsoluteUrlOrNull("data-setbg"),
 				title = div.selectFirstOrThrow("div.product__item__text h5").text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -123,7 +124,7 @@ internal class PapScan(context: MangaLoaderContext) :
 			val dateText = li.selectFirst("span.date-chapter-title-rtl")?.text()
 			MangaChapter(
 				id = generateUid(href),
-				name = li.selectFirstOrThrow("span em").text(),
+				title = li.selectFirstOrThrow("span em").text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

@@ -6,9 +6,9 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
@@ -21,7 +21,7 @@ import javax.crypto.spec.SecretKeySpec
 internal abstract class LineWebtoonsParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
-) : MangaParser(context, source) {
+) : LegacyMangaParser(context, source) {
 
 	override val filterCapabilities: MangaListFilterCapabilities
 		get() = MangaListFilterCapabilities(
@@ -102,7 +102,7 @@ internal abstract class LineWebtoonsParser(
 		return episodes.mapChapters { i, jo ->
 			MangaChapter(
 				id = generateUid("$titleNo-$i"),
-				name = jo.getString("episodeTitle"),
+				title = jo.getStringOrNull("episodeTitle"),
 				number = jo.getInt("episodeSeq").toFloat(),
 				volume = 0,
 				url = "$titleNo-${jo.get("episodeNo")}",
@@ -121,18 +121,20 @@ internal abstract class LineWebtoonsParser(
 		makeRequest("/lineWebtoon/webtoon/challengeTitleInfo.json?v=2&titleNo=${titleNo}")
 			.getJSONObject("titleInfo")
 			.let { jo ->
+				val isNsfwSource = jo.getBooleanOrDefault("ageGradeNotice", isNsfwSource)
+				val author = jo.getStringOrNull("writingAuthorName")
 				Manga(
 					id = generateUid(titleNo),
 					title = jo.getString("title"),
-					altTitle = null,
+					altTitles = emptySet(),
 					url = "$titleNo",
 					publicUrl = "https://$domain/$languageCode/canvas/a/list?title_no=${titleNo}",
 					rating = jo.getFloatOrDefault("starScoreAverage", -10f) / 10f,
-					isNsfw = jo.getBooleanOrDefault("ageGradeNotice", isNsfwSource),
+					contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 					coverUrl = jo.getString("thumbnail").toAbsoluteUrl(staticDomain),
 					largeCoverUrl = jo.getStringOrNull("thumbnailVertical")?.toAbsoluteUrl(staticDomain),
 					tags = setOf(parseTag(jo.getJSONObject("genreInfo"))),
-					author = jo.getStringOrNull("writingAuthorName"),
+					authors = setOfNotNull(author),
 					description = jo.getString("synopsis"),
 					// I don't think the API provides this info
 					state = null,
@@ -150,19 +152,20 @@ internal abstract class LineWebtoonsParser(
 					.getJSONArray("titleList")
 					.mapJSON { jo ->
 						val titleNo = jo.getLong("titleNo")
+						val author = jo.getStringOrNull("writingAuthorName")
 
 						Manga(
 							id = generateUid(titleNo),
 							title = jo.getString("title"),
-							altTitle = null,
+							altTitles = emptySet(),
 							url = titleNo.toString(),
 							publicUrl = "https://$domain/$languageCode/canvas/a/list?title_no=$titleNo",
 							rating = RATING_UNKNOWN,
-							isNsfw = isNsfwSource,
+							contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 							coverUrl = jo.getString("thumbnail").toAbsoluteUrl(staticDomain),
 							largeCoverUrl = null,
 							tags = emptySet(),
-							author = jo.getStringOrNull("writingAuthorName"),
+							authors = setOfNotNull(author),
 							description = null,
 							state = null,
 							source = source,
@@ -194,19 +197,21 @@ internal abstract class LineWebtoonsParser(
 					.getJSONArray("titles")
 					.mapJSON { jo ->
 						val titleNo = jo.getLong("titleNo")
+						val isNsfwSource = jo.getBooleanOrDefault("ageGradeNotice", isNsfwSource)
+						val author = jo.getStringOrNull("writingAuthorName")
 
 						Manga(
 							id = generateUid(titleNo),
 							title = jo.getString("title"),
-							altTitle = null,
+							altTitles = emptySet(),
 							url = titleNo.toString(),
 							publicUrl = "https://$domain/$languageCode/canvas/a/list?title_no=$titleNo",
 							rating = jo.getFloatOrDefault("starScoreAverage", -10f) / 10f,
-							isNsfw = jo.getBooleanOrDefault("ageGradeNotice", isNsfwSource),
+							contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 							coverUrl = jo.getString("thumbnail").toAbsoluteUrl(staticDomain),
 							largeCoverUrl = jo.getStringOrNull("thumbnailVertical")?.toAbsoluteUrl(staticDomain),
 							tags = setOfNotNull(genres[jo.getString("representGenre")]),
-							author = jo.getStringOrNull("writingAuthorName"),
+							authors = setOfNotNull(author),
 							description = jo.getString("synopsis"),
 							// I don't think the API provides this info
 							state = null,

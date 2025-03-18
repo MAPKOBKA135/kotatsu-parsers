@@ -8,8 +8,8 @@ import okhttp3.Interceptor
 import okhttp3.Response
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -19,7 +19,7 @@ internal abstract class NineMangaParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	defaultDomain: String,
-) : PagedMangaParser(context, source, pageSize = 26), Interceptor {
+) : LegacyPagedMangaParser(context, source, pageSize = 26), Interceptor {
 
 	override val configKeyDomain = ConfigKey.Domain(defaultDomain)
 
@@ -113,11 +113,11 @@ internal abstract class NineMangaParser(
 				url = relUrl,
 				publicUrl = href,
 				title = dd?.selectFirst("a.bookname")?.text()?.toCamelCase().orEmpty(),
-				altTitle = null,
-				coverUrl = node.selectFirst("img")?.src().orEmpty(),
+				altTitles = emptySet(),
+				coverUrl = node.selectFirst("img")?.src(),
 				rating = RATING_UNKNOWN,
-				author = null,
-				isNsfw = false,
+				authors = emptySet(),
+				contentRating = null,
 				tags = emptySet(),
 				state = null,
 				source = source,
@@ -135,11 +135,12 @@ internal abstract class NineMangaParser(
 		val tagMap = getOrCreateTagMap()
 		val selectTag = infoRoot.getElementsByAttributeValue("itemprop", "genre").first()?.select("a")
 		val tags = selectTag?.mapNotNullToSet { tagMap[it.text()] }
+		val author = infoRoot.getElementsByAttributeValue("itemprop", "author").first()?.textOrNull()
 		return manga.copy(
 			title = root.selectFirst("h1[itemprop=name]")?.textOrNull()?.removeSuffix("Manga")?.trimEnd()
 				?: manga.title,
 			tags = tags.orEmpty(),
-			author = infoRoot.getElementsByAttributeValue("itemprop", "author").first()?.textOrNull(),
+			authors = setOfNotNull(author),
 			state = parseStatus(infoRoot.select("li a.red").text()),
 			description = infoRoot.getElementsByAttributeValue("itemprop", "description").first()?.html()
 				?.substringAfter("</b>"),
@@ -149,7 +150,7 @@ internal abstract class NineMangaParser(
 					val href = a.attrAsRelativeUrl("href").replace("%20", " ")
 					MangaChapter(
 						id = generateUid(href),
-						name = a.text(),
+						title = a.textOrNull(),
 						number = i + 1f,
 						volume = 0,
 						url = href,

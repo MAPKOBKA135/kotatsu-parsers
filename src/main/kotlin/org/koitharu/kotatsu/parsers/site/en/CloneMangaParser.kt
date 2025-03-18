@@ -2,15 +2,15 @@ package org.koitharu.kotatsu.parsers.site.en
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("CLONEMANGA", "CloneManga", "en")
 internal class CloneMangaParser(context: MangaLoaderContext) :
-	SinglePageMangaParser(context, MangaParserSource.CLONEMANGA) {
+	LegacySinglePageMangaParser(context, MangaParserSource.CLONEMANGA) {
 
 	override val availableSortOrders: Set<SortOrder> = Collections.singleton(
 		SortOrder.POPULARITY,
@@ -38,11 +38,11 @@ internal class CloneMangaParser(context: MangaLoaderContext) :
 				id = generateUid(href),
 				title = item.selectFirst("h3")?.text() ?: return@mapNotNull null,
 				coverUrl = "https://$domain/$cover",
-				altTitle = null,
-				author = "Dan Kim",
+				altTitles = emptySet(),
+				authors = setOf("Dan Kim"),
 				rating = RATING_UNKNOWN,
 				url = href,
-				isNsfw = false,
+				contentRating = null,
 				tags = emptySet(),
 				state = null,
 				publicUrl = href.toAbsoluteUrl(domain),
@@ -65,7 +65,7 @@ internal class CloneMangaParser(context: MangaLoaderContext) :
 		for (i in 0..numChapters) {
 			val chapter = MangaChapter(
 				id = generateUid("$series&page=$i"),
-				name = "Chapter ${i + 1}",
+				title = null,
 				number = i + 1f,
 				volume = 0,
 				url = "$series&page=$i",

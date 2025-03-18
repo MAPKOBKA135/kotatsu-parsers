@@ -1,10 +1,10 @@
 package org.koitharu.kotatsu.parsers.site.ja
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
 import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
@@ -16,7 +16,7 @@ private const val STATUS_FINISHED = "完結"
 
 @MangaSourceParser("NICOVIDEO_SEIGA", "NicoVideo Seiga", "ja")
 internal class NicovideoSeigaParser(context: MangaLoaderContext) :
-	MangaParser(context, MangaParserSource.NICOVIDEO_SEIGA),
+	LegacyMangaParser(context, MangaParserSource.NICOVIDEO_SEIGA),
 	MangaParserAuthProvider {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("nicovideo.jp")
@@ -84,15 +84,16 @@ internal class NicovideoSeigaParser(context: MangaLoaderContext) :
 			val href =
 				item.selectFirst(".comic_icon > div > a")?.attrAsRelativeUrlOrNull("href") ?: return@mapNotNull null
 			val statusText = item.selectFirst(".mg_description_header > .mg_icon > .content_status > span")?.text()
+			val author = item.selectFirst(".mg_description_header > .mg_author > a")?.text()
 			Manga(
 				id = generateUid(href),
 				title = item.selectFirst(".mg_body > .title > a")?.text() ?: return@mapNotNull null,
-				coverUrl = item.selectFirst(".comic_icon > div > a > img")?.attrAsAbsoluteUrl("src").orEmpty(),
-				altTitle = null,
-				author = item.selectFirst(".mg_description_header > .mg_author > a")?.text(),
+				coverUrl = item.selectFirst(".comic_icon > div > a > img")?.attrAsAbsoluteUrl("src"),
+				altTitles = emptySet(),
+				authors = setOfNotNull(author),
 				rating = RATING_UNKNOWN,
 				url = href,
-				isNsfw = false,
+				contentRating = null,
 				tags = item.getElementsByAttributeValueContaining("href", "?category=").mapToSet { a ->
 					MangaTag(
 						key = a.attr("href").substringAfterLast('='),
@@ -136,7 +137,7 @@ internal class NicovideoSeigaParser(context: MangaLoaderContext) :
 					?.attrAsRelativeUrl("href") ?: li.parseFailed()
 				MangaChapter(
 					id = generateUid(href),
-					name = li.select("div > div.description > div.title > a").text(),
+					title = li.select("div > div.description > div.title > a").text(),
 					number = i + 1f,
 					volume = 0,
 					url = href,
@@ -192,15 +193,15 @@ internal class NicovideoSeigaParser(context: MangaLoaderContext) :
 				publicUrl = href.toAbsoluteUrl(item.host ?: domain),
 				title = item.selectFirst(".search_result__item__info > .search_result__item__info--title > a")
 					?.textOrNull() ?: return@mapNotNull null,
-				altTitle = null,
-				author = null,
+				altTitles = emptySet(),
+				authors = emptySet(),
 				tags = emptySet(),
 				rating = RATING_UNKNOWN,
 				state = null,
-				isNsfw = false,
+				contentRating = null,
 				source = source,
 				coverUrl = item.selectFirst(".search_result__item__thumbnail > a > img")
-					?.attrAsAbsoluteUrl("data-original").orEmpty(),
+					?.attrAsAbsoluteUrl("data-original"),
 			)
 		}
 	}

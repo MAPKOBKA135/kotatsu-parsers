@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.gattsu
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
@@ -14,7 +14,7 @@ internal abstract class GattsuParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 20,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -78,14 +78,14 @@ internal abstract class GattsuParser(
 				url = href,
 				publicUrl = href,
 				title = li.selectLast(".thumb-titulo, .video-titulo")?.text().orEmpty(),
-				coverUrl = li.selectFirst("img")?.src().orEmpty(),
-				altTitle = null,
+				coverUrl = li.selectFirst("img")?.src(),
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -111,16 +111,16 @@ internal abstract class GattsuParser(
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val urlChapter = doc.selectFirstOrThrow("ul.post-fotos li a, ul.paginaPostBotoes a").attrAsAbsoluteUrl("href")
+		val author = doc.selectFirst(".post-itens li:contains(Autor) a, .paginaPostInfo li:contains(Artista) a")?.text()
 		return manga.copy(
 			description = doc.selectFirst("div.post-texto")?.html(),
 			tags = doc.selectFirst(".post-itens li:contains(Tags), .paginaPostInfo li:contains(Categorias)")
 				?.parseTags().orEmpty(),
-			author = doc.selectFirst(".post-itens li:contains(Autor) a, .paginaPostInfo li:contains(Artista) a")
-				?.text(),
+			authors = setOfNotNull(author),
 			chapters = listOf(
 				MangaChapter(
 					id = manga.id,
-					name = manga.title,
+					title = manga.title,
 					number = 1f,
 					volume = 0,
 					url = urlChapter,

@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.parsers.model
 
 import org.koitharu.kotatsu.parsers.InternalParsersApi
 
+@Deprecated("Please check new MangaSearchQueryCapabilities class")
 public data class MangaListFilterCapabilities @InternalParsersApi constructor(
 
 	/**
@@ -47,4 +48,10 @@ public data class MangaListFilterCapabilities @InternalParsersApi constructor(
 	 * @see [MangaListFilterOptions.availableLocales]
 	 */
 	val isOriginalLocaleSupported: Boolean = false,
+
+	/**
+	 * Whether parser supports searching by author name
+	 * @see [MangaListFilter.author]
+	 */
+	val isAuthorSearchSupported: Boolean = false,
 )

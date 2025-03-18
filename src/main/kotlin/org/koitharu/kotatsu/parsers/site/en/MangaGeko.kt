@@ -4,15 +4,16 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGAGEKO", "MangaGeko", "en")
-internal class MangaGeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MANGAGEKO, 30) {
+internal class MangaGeko(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.MANGAGEKO, 30) {
 
 	override val availableSortOrders: Set<SortOrder> =
 		EnumSet.of(SortOrder.POPULARITY, SortOrder.UPDATED, SortOrder.NEWEST)
@@ -77,18 +78,19 @@ internal class MangaGeko(context: MangaLoaderContext) : PagedMangaParser(context
 		val doc = webClient.httpGet(url).parseHtml()
 		return doc.select("li.novel-item").map { div ->
 			val href = div.selectFirstOrThrow("a").attrAsRelativeUrl("href")
+			val author = div.selectFirstOrThrow("h6").text().removePrefix("Author(S): ").nullIfEmpty()
 			Manga(
 				id = generateUid(href),
 				title = div.selectFirstOrThrow("h4").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
-				coverUrl = div.selectFirstOrThrow("img").src().orEmpty(),
+				contentRating = null,
+				coverUrl = div.selectFirstOrThrow("img").src(),
 				tags = emptySet(),
 				state = null,
-				author = div.selectFirstOrThrow("h6").text().removePrefix("Author(S): "),
+				authors = setOfNotNull(author),
 				source = source,
 			)
 		}
@@ -108,8 +110,9 @@ internal class MangaGeko(context: MangaLoaderContext) : PagedMangaParser(context
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val chaptersDeferred = async { loadChapters(manga.url) }
+		val author = doc.selectFirstOrThrow(".author").textOrNull()
 		manga.copy(
-			altTitle = doc.selectFirstOrThrow(".alternative-title").textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirstOrThrow(".alternative-title").textOrNull()),
 			state = when (doc.selectFirstOrThrow(".header-stats span:contains(Status) strong").text()) {
 				"Ongoing" -> MangaState.ONGOING
 				"Completed" -> MangaState.FINISHED
@@ -122,7 +125,7 @@ internal class MangaGeko(context: MangaLoaderContext) : PagedMangaParser(context
 					source = source,
 				)
 			},
-			author = doc.selectFirstOrThrow(".author").textOrNull(),
+			authors = setOfNotNull(author),
 			description = doc.selectFirstOrThrow(".description").html(),
 			chapters = chaptersDeferred.await(),
 		)
@@ -141,7 +144,7 @@ internal class MangaGeko(context: MangaLoaderContext) : PagedMangaParser(context
 					.replace(".", "").replace("Sept", "Sep")
 				MangaChapter(
 					id = generateUid(url),
-					name = name,
+					title = name,
 					number = i + 1f,
 					volume = 0,
 					url = url,

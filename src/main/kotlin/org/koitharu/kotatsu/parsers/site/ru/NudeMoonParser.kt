@@ -1,10 +1,10 @@
 package org.koitharu.kotatsu.parsers.site.ru
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
 import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -14,7 +14,7 @@ import java.util.*
 @MangaSourceParser("NUDEMOON", "Nude-Moon", "ru", type = ContentType.HENTAI)
 internal class NudeMoonParser(
 	context: MangaLoaderContext,
-) : MangaParser(context, MangaParserSource.NUDEMOON), MangaParserAuthProvider {
+) : LegacyMangaParser(context, MangaParserSource.NUDEMOON), MangaParserAuthProvider {
 
 	override val configKeyDomain = ConfigKey.Domain(
 		"b.nude-moon.fun",
@@ -94,12 +94,13 @@ internal class NudeMoonParser(
 			val a = row.selectFirstOrThrow("a")
 			val href = a.attrAsRelativeUrl("href")
 			val title = a.attr("title")
+			val author = row.getElementsByAttributeValueContaining("href", "/mangaka/").firstOrNull()?.textOrNull()
 			Manga(
 				id = generateUid(href),
 				url = href,
 				title = title.substringAfter(" / "),
-				altTitle = title.substringBefore(" / ", "").takeUnless { it.isBlank() },
-				author = row.getElementsByAttributeValueContaining("href", "/mangaka/").firstOrNull()?.textOrNull(),
+				altTitles = setOfNotNull(title.substringBefore(" / ", "").takeUnless { it.isBlank() }),
+				authors = setOfNotNull(author),
 				coverUrl = row.selectFirst("img")?.absUrl("src").orEmpty(),
 				tags = row.selectFirst(".tag-links")?.select("a")?.mapToSet {
 					MangaTag(
@@ -111,7 +112,7 @@ internal class NudeMoonParser(
 				source = source,
 				publicUrl = a.absUrl("href"),
 				rating = RATING_UNKNOWN,
-				isNsfw = true,
+				contentRating = ContentRating.ADULT,
 				description = row.selectFirst("div.description")?.html(),
 				state = null,
 			)
@@ -122,6 +123,7 @@ internal class NudeMoonParser(
 		val body = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml().body()
 		val root = body.selectFirstOrThrow("table.news_pic2")
 		val dateFormat = SimpleDateFormat("dd MMMM yyyy", sourceLocale)
+		val author = root.getElementsByAttributeValueContaining("href", "/mangaka/").firstOrNull()?.text()
 		return manga.copy(
 			largeCoverUrl = body.selectFirstOrThrow("img[data-src]").attrAsAbsoluteUrl("data-src"),
 			description = root.selectFirst(".description")?.html() ?: manga.description,
@@ -132,8 +134,7 @@ internal class NudeMoonParser(
 					source = source,
 				)
 			} + manga.tags,
-			author = root.getElementsByAttributeValueContaining("href", "/mangaka/").firstOrNull()?.text()
-				?: manga.author,
+			authors = author?.let { setOf(it) } ?: manga.authors,
 			chapters = listOf(
 				MangaChapter(
 					id = manga.id,
@@ -141,7 +142,7 @@ internal class NudeMoonParser(
 					source = source,
 					number = 0f,
 					volume = 0,
-					name = manga.title,
+					title = manga.title,
 					scanlator = root.getElementsByAttributeValueContaining("href", "/perevod/").firstOrNull()
 						?.textOrNull(),
 					uploadDate = dateFormat.tryParse(

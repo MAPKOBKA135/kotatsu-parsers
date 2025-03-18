@@ -8,8 +8,8 @@ import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -19,7 +19,7 @@ import java.util.*
 @Broken
 @MangaSourceParser("BENTOMANGA", "BentoManga", "fr")
 internal class BentomangaParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.BENTOMANGA, 10) {
+	LegacyPagedMangaParser(context, MangaParserSource.BENTOMANGA, 10) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.UPDATED,
@@ -111,10 +111,11 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 		return root.select(".manga[data-manga]").map { div ->
 			val header = div.selectFirstOrThrow(".manga_header")
 			val href = header.selectFirstOrThrow("a").attrAsRelativeUrl("href")
+			val isNsfwSource = div.selectFirst(".badge-adult_content") != null
 			Manga(
 				id = generateUid(href),
 				title = div.selectFirst("h1")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = div.getElementsByAttributeValue("data-icon", "avg_rate")
@@ -123,8 +124,8 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 					?.toFloatOrNull()
 					?.div(10f)
 					?: RATING_UNKNOWN,
-				isNsfw = div.selectFirst(".badge-adult_content") != null,
-				coverUrl = div.selectFirst("img")?.src().assertNotNull("src").orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = div.selectFirst("img")?.src().assertNotNull("src"),
 				tags = div.selectFirst(".component-manga-categories")
 					.assertNotNull("tags")
 					?.select("a")
@@ -136,7 +137,7 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 						)
 					}.orEmpty(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				description = div.selectFirst(".manga_synopsis")?.html().assertNotNull("description"),
 				source = source,
 			)
@@ -147,8 +148,9 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 		val mangaUrl = manga.url.toAbsoluteUrl(domain)
 		val root = webClient.httpGet(mangaUrl).parseHtml()
 			.requireElementById("container_manga_show")
+		val author = root.selectFirst(".datas_more-authors-people")?.textOrNull()
 		return manga.copy(
-			altTitle = root.selectFirst(".component-manga-title_alt")?.textOrNull(),
+			altTitles = setOfNotNull(root.selectFirst(".component-manga-title_alt")?.textOrNull()),
 			description = root.selectFirst(".datas_synopsis")?.html().assertNotNull("description")
 				?: manga.description,
 			state = when (root.selectFirst(".datas_more-status-data")?.textOrNull().assertNotNull("status")) {
@@ -158,7 +160,7 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 				"En pause" -> MangaState.PAUSED
 				else -> null
 			},
-			author = root.selectFirst(".datas_more-authors-people")?.textOrNull(),
+			authors = setOfNotNull(author),
 			chapters = run {
 				val input = root.selectFirst("input[name=\"limit\"]") ?: return@run parseChapters(root)
 				val max = input.attr("max").toInt()
@@ -232,11 +234,11 @@ internal class BentomangaParser(context: MangaLoaderContext) :
 			.select(".component-chapter").map { div ->
 				val a = div.selectFirstOrThrow("a:not([style*='display:none'])")
 				val href = a.attrAsRelativeUrl("href")
-				val title = div.selectFirstOrThrow(".chapter_volume").text()
+				val title = div.selectFirstOrThrow(".chapter_volume").textOrNull()
 				val name = div.selectFirst(".chapter_title")?.textOrNull()
 				MangaChapter(
 					id = generateUid(href),
-					name = if (name != null && name != title) "$title: $name" else title,
+					title = if (name != null && name != title) "$title: $name" else title,
 					number = href.substringAfterLast('/').toFloatOrNull() ?: 0f,
 					volume = 0,
 					url = href,

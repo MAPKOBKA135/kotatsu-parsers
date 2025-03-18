@@ -16,4 +16,3 @@ internal class NyxManga(context: MangaLoaderContext) :
 			isTagsExclusionSupported = false,
 		)
 }
-

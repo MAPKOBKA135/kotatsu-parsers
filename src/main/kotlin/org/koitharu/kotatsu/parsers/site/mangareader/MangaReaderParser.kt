@@ -12,8 +12,8 @@ import okhttp3.internal.closeQuietly
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -25,7 +25,7 @@ internal abstract class MangaReaderParser(
 	domain: String,
 	pageSize: Int,
 	searchPageSize: Int,
-) : PagedMangaParser(context, source, pageSize, searchPageSize), Interceptor {
+) : LegacyPagedMangaParser(context, source, pageSize, searchPageSize), Interceptor {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -160,14 +160,14 @@ internal abstract class MangaReaderParser(
 				id = generateUid(relativeUrl),
 				url = relativeUrl,
 				title = it.selectFirst(selectMangaListTitle)?.text() ?: a.attr("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				rating = rating,
-				isNsfw = isNsfwSource,
-				coverUrl = it.selectFirst(selectMangaListImg)?.src().orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = it.selectFirst(selectMangaListImg)?.src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -181,7 +181,7 @@ internal abstract class MangaReaderParser(
 			val url = element.selectFirst("a")?.attrAsRelativeUrl("href") ?: return@mapChapters null
 			MangaChapter(
 				id = generateUid(url),
-				name = element.selectFirst(".chapternum")?.text() ?: "Chapter ${index + 1}",
+				title = element.selectFirst(".chapternum")?.textOrNull(),
 				url = url,
 				number = index + 1f,
 				volume = 0,
@@ -275,7 +275,7 @@ internal abstract class MangaReaderParser(
 		return manga.copy(
 			description = docs.selectFirst(detailsDescriptionSelector)?.text(),
 			state = mangaState,
-			author = author,
+			authors = setOfNotNull(author),
 			contentRating = if (manga.isNsfw || nsfw) {
 				ContentRating.ADULT
 			} else {

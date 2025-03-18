@@ -91,14 +91,14 @@ internal class XxxRevolutionScantrad(context: MangaLoaderContext) :
 				id = generateUid(relativeUrl),
 				url = relativeUrl,
 				title = it.selectFirst(selectMangaListTitle)?.text() ?: a.attr("title"),
-				altTitle = null,
+				altTitles = emptySet(),
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				rating = rating,
-				isNsfw = isNsfwSource,
-				coverUrl = it.selectFirst(selectMangaListImg)?.src().orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = it.selectFirst(selectMangaListImg)?.src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -112,7 +112,7 @@ internal class XxxRevolutionScantrad(context: MangaLoaderContext) :
 			val url = element.selectFirst("a")?.attrAsRelativeUrl("href") ?: return@mapChapters null
 			MangaChapter(
 				id = generateUid(url),
-				name = element.selectFirst(".chapternum")?.text() ?: "Chapter ${index + 1}",
+				title = element.selectFirst(".chapternum")?.textOrNull(),
 				url = "$urlStart/$url",
 				number = index + 1f,
 				volume = 0,

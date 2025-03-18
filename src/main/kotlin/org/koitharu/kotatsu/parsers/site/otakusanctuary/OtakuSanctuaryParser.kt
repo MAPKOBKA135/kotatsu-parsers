@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.otakusanctuary
 import kotlinx.coroutines.coroutineScope
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -16,7 +16,7 @@ internal abstract class OtakuSanctuaryParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 32,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -110,15 +110,15 @@ internal abstract class OtakuSanctuaryParser(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = div.selectFirst("h4")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirst(".rating")?.ownText()?.toFloatOrNull()?.div(10f) ?: RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -160,7 +160,7 @@ internal abstract class OtakuSanctuaryParser(
 		}
 
 		val alt = doc.body().selectFirst(selectAlt)?.textOrNull()?.replace("Other names", "")?.nullIfEmpty()
-		val auth = doc.body().selectFirst(selectAut)?.textOrNull()
+		val author = doc.body().selectFirst(selectAut)?.textOrNull()
 
 		val dateFormat = SimpleDateFormat(datePattern, sourceLocale)
 
@@ -174,8 +174,8 @@ internal abstract class OtakuSanctuaryParser(
 				)
 			},
 			description = desc,
-			altTitle = alt,
-			author = auth,
+			altTitles = setOfNotNull(alt),
+			authors = setOfNotNull(author),
 			state = state,
 			chapters = doc.body().requireElementById("chapter").select("tr.chapter")
 				.mapChapters(reversed = true) { i, tr ->
@@ -185,7 +185,7 @@ internal abstract class OtakuSanctuaryParser(
 					val name = a.text()
 					MangaChapter(
 						id = generateUid(url),
-						name = name,
+						title = name,
 						number = i.toFloat(),
 						volume = 0,
 						url = url,

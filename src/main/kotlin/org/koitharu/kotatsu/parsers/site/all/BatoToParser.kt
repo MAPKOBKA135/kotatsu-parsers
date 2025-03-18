@@ -7,8 +7,8 @@ import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -20,7 +20,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 @MangaSourceParser("BATOTO", "Bato.To")
-internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
+internal class BatoToParser(context: MangaLoaderContext) : LegacyPagedMangaParser(
 	context = context,
 	source = MangaParserSource.BATOTO,
 	pageSize = 60,
@@ -116,7 +116,7 @@ internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
 		"zbato.net",
 		"zbato.org",
 		"fto.to",
-		"jto.to"
+		"jto.to",
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
@@ -214,6 +214,7 @@ internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
 		val attrs = details.selectFirst(".attr-main")?.select(".attr-item")?.associate {
 			it.child(0).text() to it.child(1)
 		}.orEmpty()
+		val author = attrs["Authors:"]?.textOrNull()
 		return manga.copy(
 			title = root.selectFirst("h3.item-title")?.text() ?: manga.title,
 			contentRating = if (root.selectFirst("alert")?.getElementsContainingOwnText("NSFW").isNullOrEmpty()) {
@@ -233,7 +234,7 @@ internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
 				"Hiatus" -> MangaState.PAUSED
 				else -> manga.state
 			},
-			author = attrs["Authors:"]?.textOrNull() ?: manga.author,
+			authors = author?.let { setOf(it) } ?: manga.authors,
 			chapters = root.selectFirst(".episode-list")
 				?.selectFirst(".main")
 				?.children()
@@ -333,17 +334,17 @@ internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
 			Manga(
 				id = generateUid(href),
 				title = title,
-				altTitle = div.selectFirst(".item-alias")?.text()?.takeUnless { it == title },
+				altTitles = setOfNotNull(div.selectFirst(".item-alias")?.textOrNull()?.takeUnless { it == title }),
 				url = href,
 				publicUrl = a.absUrl("href"),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
-				coverUrl = div.selectFirst("img[src]")?.absUrl("src").orEmpty(),
+				contentRating = null,
+				coverUrl = div.selectFirst("img[src]")?.absUrl("src"),
 				largeCoverUrl = null,
 				description = null,
 				tags = div.selectFirst(".item-genre")?.parseTags().orEmpty(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -364,7 +365,7 @@ internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
 		val href = a.attrAsRelativeUrl("href")
 		return MangaChapter(
 			id = generateUid(href),
-			name = a.text(),
+			title = a.textOrNull(),
 			number = index + 1f,
 			volume = 0,
 			url = href,

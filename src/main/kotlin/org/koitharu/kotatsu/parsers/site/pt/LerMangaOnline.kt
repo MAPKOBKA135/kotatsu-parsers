@@ -4,8 +4,8 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -14,7 +14,7 @@ import java.util.*
 @Broken
 @MangaSourceParser("LERMANGAONLINE", "LerMangaOnline", "pt")
 internal class LerMangaOnline(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.LERMANGAONLINE, 20) {
+	LegacyPagedMangaParser(context, MangaParserSource.LERMANGAONLINE, 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("lermangaonline.com.br")
 
@@ -78,13 +78,13 @@ internal class LerMangaOnline(context: MangaLoaderContext) :
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				title = div.selectLastOrThrow("section h3").text(),
 				coverUrl = div.selectFirst("img")?.src().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -119,7 +119,7 @@ internal class LerMangaOnline(context: MangaLoaderContext) :
 				val dateText = a.selectFirstOrThrow("span").text()
 				MangaChapter(
 					id = generateUid(href),
-					name = title,
+					title = title,
 					number = i + 1f,
 					volume = 0,
 					url = href,

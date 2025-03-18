@@ -66,14 +66,15 @@ internal class ManhwaHub(context: MangaLoaderContext) :
 		}.map { div ->
 			val href = div.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 			val summary = div.selectFirst(".tab-summary") ?: div.selectFirst(".item-summary")
+			val author = summary?.selectFirst(".mg_author")?.selectFirst("a")?.ownText()
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = (summary?.selectFirst("h3") ?: summary?.selectFirst("h4")
 				?: div.selectFirst("h5.series-title"))?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirst("span.total_votes")?.ownText()?.toFloatOrNull()?.div(5f) ?: -1f,
 				tags = summary?.selectFirst(".mg_genres")?.select("a")?.mapNotNullToSet { a ->
 					MangaTag(
@@ -82,7 +83,7 @@ internal class ManhwaHub(context: MangaLoaderContext) :
 						source = source,
 					)
 				}.orEmpty(),
-				author = summary?.selectFirst(".mg_author")?.selectFirst("a")?.ownText(),
+				authors = setOfNotNull(author),
 				state = when (summary?.selectFirst(".mg_status")?.selectFirst(".summary-content")?.ownText()
 					?.lowercase().orEmpty()) {
 					in ongoing -> MangaState.ONGOING
@@ -90,7 +91,7 @@ internal class ManhwaHub(context: MangaLoaderContext) :
 					else -> null
 				},
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}

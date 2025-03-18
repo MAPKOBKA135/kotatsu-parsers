@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.vi
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.asTypedList
@@ -15,7 +15,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("YURINEKO", "YuriNeko", "vi", ContentType.HENTAI)
-internal class YurinekoParser(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.YURINEKO, 20) {
+internal class YurinekoParser(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.YURINEKO, 20) {
 	override val configKeyDomain: ConfigKey.Domain
 		get() = ConfigKey.Domain("yurineko.site")
 
@@ -63,14 +64,17 @@ internal class YurinekoParser(context: MangaLoaderContext) : PagedMangaParser(co
 			.mapJSON { jo ->
 				val id = jo.getLong("id")
 				val relativeUrl = "/manga/$id"
+				val author = jo.getJSONArray("author")
+					.mapJSON { author -> author.getString("name") }
+					.joinToString { it }
 				Manga(
 					id = generateUid(id),
 					title = jo.getString("originalName"),
-					altTitle = jo.getStringOrNull("otherName"),
+					altTitles = setOfNotNull(jo.getStringOrNull("otherName")),
 					url = relativeUrl,
 					publicUrl = relativeUrl.toAbsoluteUrl(domain),
 					rating = RATING_UNKNOWN,
-					isNsfw = true,
+					contentRating = ContentRating.ADULT,
 					coverUrl = "https://$storageDomain/${jo.getString("thumbnail")}",
 					tags = jo.getJSONArray("tag").mapJSONToSet { tag ->
 						MangaTag(
@@ -85,9 +89,7 @@ internal class YurinekoParser(context: MangaLoaderContext) : PagedMangaParser(co
 						5, 6, 7 -> MangaState.ABANDONED
 						else -> null
 					},
-					author = jo.getJSONArray("author")
-						.mapJSON { author -> author.getString("name") }
-						.joinToString { it },
+					authors = setOf(author),
 					description = jo.getStringOrNull("description"),
 					source = source,
 				)
@@ -99,13 +101,12 @@ internal class YurinekoParser(context: MangaLoaderContext) : PagedMangaParser(co
 		val df = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
 		return manga.copy(
 			chapters = response.getJSONArray("chapters")
-				.asTypedList<JSONObject>()
 				.mapChapters(true) { i, jo ->
 					val mangaId = jo.getInt("mangaID")
 					val chapterId = jo.getInt("id")
 					MangaChapter(
 						id = generateUid(chapterId.toLong()),
-						name = jo.getString("name"),
+						title = jo.getStringOrNull("name"),
 						number = i + 1f,
 						volume = 0,
 						scanlator = null,

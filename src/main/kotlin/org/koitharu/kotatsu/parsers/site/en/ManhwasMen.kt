@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.en
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -12,7 +12,7 @@ import java.util.*
 
 @MangaSourceParser("MANHWASMEN", "ManhwasMen", "en", type = ContentType.HENTAI)
 internal class ManhwasMen(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.MANHWASMEN, pageSize = 30, searchPageSize = 30) {
+	LegacyPagedMangaParser(context, MangaParserSource.MANHWASMEN, pageSize = 30, searchPageSize = 30) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("manhwas.men")
 
@@ -83,15 +83,15 @@ internal class ManhwasMen(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = li.selectFirst("img")?.src().orEmpty(),
+				coverUrl = li.selectFirst("img")?.src(),
 				title = li.selectFirst(".title")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -129,7 +129,7 @@ internal class ManhwasMen(context: MangaLoaderContext) :
 				val url = li.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 				MangaChapter(
 					id = generateUid(url),
-					name = li.selectFirstOrThrow(".flex-grow-1 span").text(),
+					title = li.selectFirstOrThrow(".flex-grow-1 span").text(),
 					number = i + 1f,
 					volume = 0,
 					url = url,

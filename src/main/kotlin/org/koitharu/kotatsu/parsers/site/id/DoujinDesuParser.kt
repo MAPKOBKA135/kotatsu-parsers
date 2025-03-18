@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.id
 import okhttp3.Headers
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -12,7 +12,7 @@ import java.util.*
 
 @MangaSourceParser("DOUJINDESU", "DoujinDesu.tv", "id")
 internal class DoujinDesuParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.DOUJINDESU, pageSize = 18) {
+	LegacyPagedMangaParser(context, MangaParserSource.DOUJINDESU, pageSize = 18) {
 
 	override val configKeyDomain: ConfigKey.Domain
 		get() = ConfigKey.Domain("doujindesu.tv")
@@ -116,15 +116,15 @@ internal class DoujinDesuParser(context: MangaLoaderContext) :
 				Manga(
 					id = generateUid(href),
 					title = it.selectFirst(".metadata > a")?.attr("title").orEmpty(),
-					altTitle = null,
+					altTitles = emptySet(),
 					url = href,
 					publicUrl = href.toAbsoluteUrl(domain),
 					rating = RATING_UNKNOWN,
-					isNsfw = true,
-					coverUrl = it.selectFirst(".thumbnail > img")?.src().orEmpty(),
+					contentRating = ContentRating.ADULT,
+					coverUrl = it.selectFirst(".thumbnail > img")?.src(),
 					tags = emptySet(),
 					state = null,
-					author = null,
+					authors = emptySet(),
 					largeCoverUrl = null,
 					description = null,
 					source = source,
@@ -141,8 +141,9 @@ internal class DoujinDesuParser(context: MangaLoaderContext) :
 			"Publishing" -> MangaState.ONGOING
 			else -> null
 		}
+		val author = metadataEl?.selectFirst("tr:contains(Author)")?.selectLast("td")?.text()
 		return manga.copy(
-			author = metadataEl?.selectFirst("tr:contains(Author)")?.selectLast("td")?.text(),
+			authors = setOfNotNull(author),
 			description = docs.selectFirst(".wrapper > .metadata > .pb-2")?.selectFirst("p")?.html(),
 			state = state,
 			rating = metadataEl?.selectFirst(".rating-prc")?.ownText()?.toFloatOrNull()?.div(10f) ?: RATING_UNKNOWN,
@@ -160,7 +161,7 @@ internal class DoujinDesuParser(context: MangaLoaderContext) :
 					val url = titleTag.attrAsRelativeUrl("href")
 					MangaChapter(
 						id = generateUid(url),
-						name = titleTag.text(),
+						title = titleTag.text(),
 						number = index + 1f,
 						volume = 0,
 						url = url,

@@ -10,10 +10,10 @@ import okio.IOException
 import org.jsoup.HttpStatusException
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.bitmap.Bitmap
 import org.koitharu.kotatsu.parsers.bitmap.Rect
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -21,11 +21,10 @@ import org.koitharu.kotatsu.parsers.util.json.*
 import java.net.HttpURLConnection
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.TimeZone
 
 @MangaSourceParser("CUUTRUYEN", "Cứu Truyện", "vi")
 internal class CuuTruyenParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.CUUTRUYEN, 20), Interceptor {
+	LegacyPagedMangaParser(context, MangaParserSource.CUUTRUYEN, 20) {
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.KOTATSU)
 
@@ -107,19 +106,20 @@ internal class CuuTruyenParser(context: MangaLoaderContext) :
 		val data = json.optJSONArray("data") ?: json.getJSONObject("data").getJSONArray("mangas")
 
 		return data.mapJSON { jo ->
+			val author = jo.getStringOrNull("author_name")
 			Manga(
 				id = generateUid(jo.getLong("id")),
 				url = "/api/v2/mangas/${jo.getLong("id")}",
 				publicUrl = "https://$domain/manga/${jo.getLong("id")}",
 				title = jo.getString("name"),
-				altTitle = null,
+				altTitles = emptySet(),
 				coverUrl = jo.getString("cover_mobile_url"),
 				largeCoverUrl = jo.getString("cover_url"),
-				author = jo.getStringOrNull("author_name"),
+				authors = setOfNotNull(author),
 				tags = emptySet(),
 				state = null,
 				description = null,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 				rating = RATING_UNKNOWN,
 			)
@@ -152,24 +152,27 @@ internal class CuuTruyenParser(context: MangaLoaderContext) :
 
 		// Remove old manga status from "tags"
 		val newTags = tags.filter { it.key != "da-hoan-thanh" && it.key != "dang-tien-hanh" }.toSet()
+		val author = json.optJSONObject("author")?.getStringOrNull("name")?.substringBefore(',')?.nullIfEmpty()
+		val title = json.getStringOrNull("name") ?: manga.title
 
 		manga.copy(
-			title = json.getStringOrNull("name") ?: manga.title,
+			title = title,
+			altTitles = json.optJSONArray("titles")?.mapJSONToSet { it.getString("name") }?.minus(title).orEmpty(),
 			contentRating = if (json.getBooleanOrDefault("is_nsfw", manga.isNsfw)) {
 				ContentRating.ADULT
 			} else {
 				ContentRating.SAFE
 			},
-			author = json.optJSONObject("author")?.getStringOrNull("name")?.substringBefore(',')?.nullIfEmpty(),
+			authors = setOfNotNull(author),
 			description = json.getStringOrNull("full_description"),
 			tags = newTags,
 			state = state,
-			chapters = chapters.await().mapJSON { jo ->
+			chapters = chapters.await().mapChapters(reversed = true) { _, jo ->
 				val chapterId = jo.getLong("id")
 				val number = jo.getFloatOrDefault("number", 0f)
 				MangaChapter(
 					id = generateUid(chapterId),
-					name = jo.getStringOrNull("name") ?: number.formatSimple(),
+					title = jo.getStringOrNull("name"),
 					number = number,
 					volume = 0,
 					url = "/api/v2/chapters/$chapterId",
@@ -178,7 +181,7 @@ internal class CuuTruyenParser(context: MangaLoaderContext) :
 					branch = null,
 					source = source,
 				)
-			}.reversed(),
+			},
 		)
 	}
 
@@ -247,7 +250,16 @@ internal class CuuTruyenParser(context: MangaLoaderContext) :
 		}.toByteArray()
 	}
 
-	private fun availableTags() = arraySetOf(
+	private fun availableTags() = arraySetOf( // big thanks to beer-psi
+		MangaTag("School life", "school-life", source),
+		MangaTag("Nsfw", "nsfw", source),
+		MangaTag("Monster girls", "monster-girls", source),
+		MangaTag("Magic", "magic", source),
+		MangaTag("tình yêu không được đáp lại", "tinh-yeu-khong-duoc-dap-lai", source),
+        MangaTag("tình yêu thuần khiết", "tinh-yeu-thuan-khiet", source),
+		MangaTag("Khỏa thân", "khoa-than", source),
+		MangaTag("Gyaru", "gyaru", source),
+		MangaTag("4-Koma", "4-koma", source),
 		MangaTag("Manga", "manga", source),
 		MangaTag("Đang tiến hành", "dang-tien-hanh", source),
 		MangaTag("Thể thao", "the-thao", source),
@@ -349,6 +361,7 @@ internal class CuuTruyenParser(context: MangaLoaderContext) :
 		MangaTag("Vô CP", "vo-cp", source),
 		MangaTag("Xuyên không", "xuyen-khong", source),
 		MangaTag("Việt Nam", "viet-nam", source),
+		MangaTag("Việt nam", "viet-nam", source),
 		MangaTag("Toán học", "toan-hoc", source),
 		MangaTag("Thiếu niên", "thieu-nien", source),
 		MangaTag("Tình yêu", "tinh-yeu", source),

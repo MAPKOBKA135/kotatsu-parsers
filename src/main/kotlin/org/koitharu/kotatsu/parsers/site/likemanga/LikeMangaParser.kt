@@ -7,8 +7,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -20,7 +20,7 @@ internal abstract class LikeMangaParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 36,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -111,15 +111,15 @@ internal abstract class LikeMangaParser(
 			Manga(
 				id = generateUid(href),
 				title = div.selectFirstOrThrow("p.title-manga").text(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = false,
-				coverUrl = div.selectFirstOrThrow("img").src().orEmpty(),
+				contentRating = null,
+				coverUrl = div.selectFirstOrThrow("img").src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
@@ -149,8 +149,9 @@ internal abstract class LikeMangaParser(
 				}
 			}
 		}
+		val author = doc.selectLast("li.author p")?.textOrNull()
 		return manga.copy(
-			altTitle = doc.selectFirst(".list-info li.othername h2")?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst(".list-info li.othername h2")?.textOrNull()),
 			tags = doc.select("li.kind a").mapToSet { a ->
 				MangaTag(
 					key = a.attr("href").removeSuffix('/').substringAfterLast('/'),
@@ -158,7 +159,7 @@ internal abstract class LikeMangaParser(
 					source = source,
 				)
 			},
-			author = doc.selectLast("li.author p")?.textOrNull(),
+			authors = setOfNotNull(author),
 			description = doc.requireElementById("summary_shortened").html(),
 			chapters = run {
 				if (maxPageChapter == 1) {
@@ -199,7 +200,7 @@ internal abstract class LikeMangaParser(
 			}
 			MangaChapter(
 				id = generateUid(url),
-				name = name,
+				title = name,
 				number = chapNum.toFloatOrNull() ?: 0f,
 				volume = 0,
 				url = url,
@@ -228,7 +229,7 @@ internal abstract class LikeMangaParser(
 
 				MangaChapter(
 					id = generateUid(url),
-					name = li.selectFirstOrThrow("a").text(),
+					title = li.selectFirstOrThrow("a").text(),
 					number = chapNum.toFloat(),
 					volume = 0,
 					url = url,

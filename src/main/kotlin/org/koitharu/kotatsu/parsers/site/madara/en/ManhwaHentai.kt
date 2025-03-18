@@ -68,7 +68,7 @@ internal class ManhwaHentai(context: MangaLoaderContext) :
 				)
 			},
 			description = desc,
-			altTitle = alt,
+			altTitles = setOfNotNull(alt),
 			state = state,
 			chapters = chaptersDeferred.await(),
 		)
@@ -94,7 +94,7 @@ internal class ManhwaHentai(context: MangaLoaderContext) :
 			MangaChapter(
 				id = generateUid(href),
 				url = link,
-				name = name,
+				title = name,
 				number = i + 1f,
 				volume = 0,
 				branch = null,

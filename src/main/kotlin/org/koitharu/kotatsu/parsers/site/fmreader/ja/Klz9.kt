@@ -32,13 +32,13 @@ internal class Klz9(context: MangaLoaderContext) :
 				coverUrl = div.selectFirstOrThrow("div.img-in-ratio").attr("style").substringAfter("('")
 					.substringBeforeLast("')"),
 				title = div.selectFirstOrThrow("div.series-title").text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -64,7 +64,7 @@ internal class Klz9(context: MangaLoaderContext) :
 			val dateText = a.selectFirst(selectDate)?.text()
 			MangaChapter(
 				id = generateUid(href),
-				name = a.selectFirstOrThrow("a").text(),
+				title = a.selectFirstOrThrow("a").text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

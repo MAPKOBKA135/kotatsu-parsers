@@ -4,8 +4,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -16,7 +16,7 @@ internal abstract class MmrcmsParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 20,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -126,15 +126,15 @@ internal abstract class MmrcmsParser(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = div.selectFirst("div.media-body h5")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirst("span")?.ownText()?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -149,13 +149,13 @@ internal abstract class MmrcmsParser(
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
 				coverUrl = "https://$domain/uploads/manga/$deeplink$imgUpdated",
 				title = div.selectFirst("h3 a")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -194,7 +194,7 @@ internal abstract class MmrcmsParser(
 			}
 		}
 		val alt = doc.body().selectFirst(selectAlt)?.nextElementSibling()?.textOrNull()
-		val auth = doc.body().selectFirst(selectAut)?.nextElementSibling()?.textOrNull()
+		val author = doc.body().selectFirst(selectAut)?.nextElementSibling()?.textOrNull()
 		val tags = doc.body().selectFirst(selectTag)?.nextElementSibling()?.select("a") ?: emptySet()
 		manga.copy(
 			tags = tags.mapToSet { a ->
@@ -204,9 +204,9 @@ internal abstract class MmrcmsParser(
 					source = source,
 				)
 			},
-			author = auth,
+			authors = setOfNotNull(author),
 			description = desc,
-			altTitle = alt,
+			altTitles = setOfNotNull(alt),
 			state = state,
 			chapters = chaptersDeferred.await(),
 		)
@@ -224,7 +224,7 @@ internal abstract class MmrcmsParser(
 			val dateText = li.selectFirst(selectDate)?.text()
 			MangaChapter(
 				id = generateUid(href),
-				name = li.selectFirst("h5")?.text() ?: "Chapter : ${i + 1f}",
+				title = li.selectFirst("h5")?.textOrNull(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

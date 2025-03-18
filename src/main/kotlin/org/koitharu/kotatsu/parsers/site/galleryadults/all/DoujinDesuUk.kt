@@ -39,15 +39,15 @@ internal class DoujinDesuUk(context: MangaLoaderContext) :
 				title = div.select(selectGalleryTitle).text().replace(regexBrackets, "")
 					.replace(regexSpaces, " ")
 					.trim(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfwSource,
-				coverUrl = div.selectLastOrThrow(selectGalleryImg).src().orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = div.selectLastOrThrow(selectGalleryImg).src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}

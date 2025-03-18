@@ -90,15 +90,15 @@ internal class NHentaiParser(context: MangaLoaderContext) :
 			Manga(
 				id = generateUid(href),
 				title = div.select(selectGalleryTitle).text().cleanupTitle(),
-				altTitle = null,
+				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfwSource,
-				coverUrl = div.selectFirstOrThrow(selectGalleryImg).src().orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = div.selectFirstOrThrow(selectGalleryImg).src(),
 				tags = emptySet(),
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}

@@ -7,8 +7,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.getFloatOrDefault
@@ -27,7 +27,7 @@ private const val IMAGE_BASEURL_FALLBACK = "https://hmvolumestorage.b-cdn.net/pu
 
 @MangaSourceParser("HONEYMANGA", "HoneyManga", "uk")
 internal class HoneyMangaParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.HONEYMANGA, PAGE_SIZE),
+	LegacyPagedMangaParser(context, MangaParserSource.HONEYMANGA, PAGE_SIZE),
 	Interceptor {
 
 	private val urlApi get() = "https://data.api.$domain"
@@ -75,17 +75,7 @@ internal class HoneyMangaParser(context: MangaLoaderContext) :
 				val volume = jo.getIntOrDefault("volume", 0)
 				MangaChapter(
 					id = generateUid(jo.getString("id")),
-					name = buildString {
-						append("Том ")
-						append(volume)
-						append(". ")
-						append("Розділ ")
-						append(number)
-						if (jo.optString("title") != "Title") {
-							append(" - ")
-							append(jo.optString("title"))
-						}
-					},
+					title = jo.getStringOrNull("title"),
 					number = number,
 					volume = volume,
 					url = jo.optString("chapterResourcesId"),
@@ -149,14 +139,15 @@ internal class HoneyMangaParser(context: MangaLoaderContext) :
 		return content.mapJSON { jo ->
 			val id = jo.getString("id")
 			val posterUrl = jo.getString("posterUrl")
+			val isNsfwSource = isNsfw(jo.getStringOrNull("adult"))
 			Manga(
 				id = generateUid(id),
 				title = jo.getString("title"),
-				altTitle = jo.getStringOrNull("alternativeTitle"),
+				altTitles = setOfNotNull(jo.getStringOrNull("alternativeTitle")),
 				url = id,
 				publicUrl = "https://$domain/book/$id",
 				rating = RATING_UNKNOWN,
-				isNsfw = isNsfw(jo.getStringOrNull("adult")),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				coverUrl = getCoverUrl(posterUrl, 256),
 				tags = getTitleTags(jo.optJSONArray("genresAndTags")),
 				state = when (jo.getStringOrNull("titleStatus")) {
@@ -164,7 +155,7 @@ internal class HoneyMangaParser(context: MangaLoaderContext) :
 					"Завершено" -> MangaState.FINISHED
 					else -> null
 				},
-				author = null,
+				authors = emptySet(),
 				largeCoverUrl = getCoverUrl(posterUrl, 1080),
 				description = jo.getStringOrNull("description"),
 				chapters = null,

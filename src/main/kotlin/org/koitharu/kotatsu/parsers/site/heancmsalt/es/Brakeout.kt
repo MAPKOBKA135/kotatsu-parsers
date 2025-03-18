@@ -25,7 +25,7 @@ internal class Brakeout(context: MangaLoaderContext) :
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		val dateFormat = SimpleDateFormat(datePattern, sourceLocale)
 		return manga.copy(
-			altTitle = doc.selectFirst(selectAlt)?.textOrNull(),
+			altTitles = setOfNotNull(doc.selectFirst(selectAlt)?.textOrNull()),
 			description = doc.selectFirstOrThrow(selectDesc).html(),
 			chapters = doc.select(selectChapter)
 				.mapChapters(reversed = true) { i, div ->
@@ -34,7 +34,7 @@ internal class Brakeout(context: MangaLoaderContext) :
 					val url = a.attrAsRelativeUrl("href").toAbsoluteUrl(domain)
 					MangaChapter(
 						id = generateUid(url),
-						name = div.selectFirstOrThrow(selectChapterTitle).text(),
+						title = div.selectFirstOrThrow(selectChapterTitle).text(),
 						number = i + 1f,
 						volume = 0,
 						url = url,

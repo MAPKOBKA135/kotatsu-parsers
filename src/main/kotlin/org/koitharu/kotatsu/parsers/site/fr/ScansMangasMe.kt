@@ -6,8 +6,8 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -16,7 +16,7 @@ import java.util.*
 @Broken
 @MangaSourceParser("SCANS_MANGAS_ME", "ScansMangas.me", "fr")
 internal class ScansMangasMe(context: MangaLoaderContext) :
-	SinglePageMangaParser(context, MangaParserSource.SCANS_MANGAS_ME) {
+	LegacySinglePageMangaParser(context, MangaParserSource.SCANS_MANGAS_ME) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.ALPHABETICAL,
@@ -81,16 +81,16 @@ internal class ScansMangasMe(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = div.selectFirstOrThrow("div.bigor div.tt").text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirstOrThrow("div.rating i").ownText().toFloatOrNull()?.div(10f)
 					?: RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -114,7 +114,7 @@ internal class ScansMangasMe(context: MangaLoaderContext) :
 		val chaptersDeferred = getChapters(doc)
 		val desc = doc.selectFirstOrThrow("div.desc").html().nullIfEmpty()
 		val alt = doc.body().select("div.infox span.alter").textOrNull()
-		val aut = doc.select("div.spe span")[2].text().replace("Auteur:", "").nullIfEmpty()
+		val author = doc.select("div.spe span")[2].text().replace("Auteur:", "").nullIfEmpty()
 		manga.copy(
 			tags = doc.select("div.spe span:contains(Genres) a").mapToSet { a ->
 				MangaTag(
@@ -124,8 +124,8 @@ internal class ScansMangasMe(context: MangaLoaderContext) :
 				)
 			},
 			description = desc,
-			altTitle = alt,
-			author = aut,
+			altTitles = setOfNotNull(alt),
+			authors = setOfNotNull(author),
 			state = when (doc.selectFirstOrThrow("div.spe span:contains(Statut:)").textOrNull()
 				?.substringAfterLast(':')) {
 				" En cours" -> MangaState.ONGOING
@@ -142,7 +142,7 @@ internal class ScansMangasMe(context: MangaLoaderContext) :
 			val href = a.attrAsRelativeUrl("href")
 			MangaChapter(
 				id = generateUid(href),
-				name = li.selectFirstOrThrow("span.mobile chapter").text(),
+				title = li.selectFirstOrThrow("span.mobile chapter").text(),
 				number = li.selectFirstOrThrow("span.mobile chapter").text().substringAfterLast(" ").toFloat(),
 				volume = 0,
 				url = href,

@@ -2,8 +2,8 @@ package org.koitharu.kotatsu.parsers.site.mangaworld
 
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -14,7 +14,7 @@ internal abstract class MangaWorldParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 16,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.POPULARITY,
@@ -144,16 +144,17 @@ internal abstract class MangaWorldParser(
 			val href = div.selectFirstOrThrow("a.thumb").attrAsRelativeUrl("href")
 			val tags = div.select(".genres a[href*=/archive?genre=]")
 				.mapToSet { MangaTag(it.ownText().toTitleCase(sourceLocale), it.attr("href"), source) }
+			val author = div.selectFirst(".author a")?.text()
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = div.selectFirst(".thumb img")?.attr("src").orEmpty(),
+				coverUrl = div.selectFirst(".thumb img")?.attr("src"),
 				title = div.selectFirst(".name a.manga-title")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = tags,
-				author = div.selectFirst(".author a")?.text(),
+				authors = setOfNotNull(author),
 				state =
 					when (div.selectFirst(".status a")?.text()?.lowercase()) {
 						"in corso" -> MangaState.ONGOING
@@ -163,7 +164,7 @@ internal abstract class MangaWorldParser(
 						else -> null
 					},
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -183,20 +184,21 @@ internal abstract class MangaWorldParser(
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		return manga.copy(
-			altTitle =
+			altTitles = setOfNotNull(
 				doc.selectFirst(".meta-data .font-weight-bold:contains(Titoli alternativi:)")
 					?.parent()
 					?.ownText()
 					?.substringAfter(": ")
 					?.trim()
 					?.nullIfEmpty(),
+			),
 			description = doc.getElementById("noidungm")?.text().orEmpty(),
 			chapters =
 				doc.select(".chapters-wrapper .chapter a").mapChapters(reversed = true) { i, a ->
 					val url = a.attrAsRelativeUrl("href").toAbsoluteUrl(domain)
 					MangaChapter(
 						id = generateUid(url),
-						name = a.selectFirst("span.d-inline-block")?.text() ?: "Chapter : ${i + 1f}",
+						title = a.selectFirst("span.d-inline-block")?.textOrNull(),
 						number = i + 1f,
 						volume = 0,
 						url = "$url?style=list",

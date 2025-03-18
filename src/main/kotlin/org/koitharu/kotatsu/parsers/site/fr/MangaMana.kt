@@ -2,27 +2,28 @@ package org.koitharu.kotatsu.parsers.site.fr
 
 import kotlinx.coroutines.*
 import okhttp3.Headers
-import okhttp3.Request
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONArray
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.getIntOrDefault
+import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
 import org.koitharu.kotatsu.parsers.util.json.mapJSON
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGAMANA", "MangaMana", "fr")
-internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MANGAMANA, 25) {
+internal class MangaMana(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.MANGAMANA, 25) {
 
 	override val configKeyDomain = ConfigKey.Domain("www.manga-mana.com")
 
@@ -68,17 +69,18 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 						val slug = jo.getString("slug") ?: throw ParseException("Missing Slug", url)
 						val url = "https://$domain/m/$slug"
 						val img = "https://$domainCdn/uploads/manga/$slug/cover/cover_thumb.jpg"
+						val isNsfwSource = when (jo.getIntOrDefault("caution", 0)) {
+							0 -> false
+							2 -> true
+							else -> false
+						}
 						Manga(
 							id = generateUid(url),
 							title = jo.getString("name").orEmpty(),
 							coverUrl = img,
-							altTitle = jo.getString("otherNames").orEmpty(),
-							author = null,
-							isNsfw = when (jo.getIntOrDefault("caution", 0)) {
-								0 -> false
-								2 -> true
-								else -> false
-							},
+							altTitles = setOfNotNull(jo.getStringOrNull("otherNames")),
+							authors = emptySet(),
+							contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 							rating = RATING_UNKNOWN,
 							url = url,
 							description = jo.getString("summary_old").orEmpty(),
@@ -107,8 +109,9 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 						val doc = webClient.httpGet("https://$domain/?page=$page").parseHtml()
 						return doc.select("div.row div.col_home").map { div ->
 							val href = div.selectFirstOrThrow("h4 a").attrAsRelativeUrl("href")
-							val isNsfw = div.selectFirst("img[data-adult]")?.attr("data-adult")?.isNotEmpty() == true
-							val img = if (isNsfw) {
+							val isNsfwSource =
+								div.selectFirst("img[data-adult]")?.attr("data-adult")?.isNotEmpty() == true
+							val img = if (isNsfwSource) {
 								div.selectFirst("img")?.attr("data-adult")
 							} else {
 								div.selectFirst("img")?.attr("data-src")?.replace(" ", "")
@@ -116,16 +119,16 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 							Manga(
 								id = generateUid(href),
 								title = div.select("h4").text(),
-								altTitle = null,
+								altTitles = emptySet(),
 								url = href,
 								publicUrl = href.toAbsoluteUrl(domain),
 								rating = RATING_UNKNOWN,
-								isNsfw = isNsfw,
-								coverUrl = img.orEmpty(),
+								contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+								coverUrl = img,
 								description = null,
 								tags = emptySet(),
 								state = null,
-								author = null,
+								authors = emptySet(),
 								source = source,
 							)
 						}
@@ -162,16 +165,16 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 			}
 		}
 
-		val url = "https://$domain/liste-mangas"
+		val url = "https://$domain/liste-mangas".toHttpUrl()
 		val token = webClient.httpGet(url).parseHtml().selectFirstOrThrow("meta[name=csrf-token]").attr("content")
 		val headers = Headers.Builder().add("X-CSRF-TOKEN", token).add("X-Requested-With", "XMLHttpRequest")
 			.add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8").build()
-		val doc = makeRequest(url, postData.toRequestBody(), headers)
+		val doc = makeRequest(url, postData, headers)
 
 		return doc.select("div.p-2 div.col").map { div ->
 			val href = div.selectFirstOrThrow("a").attrAsRelativeUrl("href")
-			val isNsfw = div.selectFirst("img[data-adult]")?.attr("data-adult")?.isNotEmpty() == true
-			val img = if (isNsfw) {
+			val isNsfwSource = div.selectFirst("img[data-adult]")?.attr("data-adult")?.isNotEmpty() == true
+			val img = if (isNsfwSource) {
 				div.selectFirst("img")?.attr("data-adult")
 			} else {
 				div.selectFirst("img")?.attr("data-src")?.replace(" ", "")
@@ -179,12 +182,12 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 			Manga(
 				id = generateUid(href),
 				title = div.select("h2.fs-6").text(),
-				altTitle = doc.selectFirst(".mangalist_item_othernames")?.text().orEmpty(),
+				altTitles = setOfNotNull(doc.selectFirst(".mangalist_item_othernames")?.textOrNull()),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = div.getElementById("avgrating")?.ownText()?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
-				isNsfw = isNsfw,
-				coverUrl = img.orEmpty(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = img,
 				description = div.selectFirst(".mangalist_item_description")?.text().orEmpty(),
 				tags = div.select("div.mb-1 a").mapToSet {
 					val key = it.attr("href").substringAfterLast('=')
@@ -195,20 +198,19 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 					)
 				},
 				state = null,
-				author = null,
+				authors = emptySet(),
 				source = source,
 			)
 		}
 	}
 
 
-	private suspend fun makeRequest(url: String, payload: RequestBody, headers: Headers): Document {
+	private suspend fun makeRequest(url: HttpUrl, payload: String, headers: Headers): Document {
 		var retryCount = 0
 		val backoffDelay = 2000L // Initial delay (milliseconds)
-		val request = Request.Builder().url(url).post(payload).headers(headers).build()
 		while (true) {
 			try {
-				return Jsoup.parse(context.httpClient.newCall(request).execute().parseJson().getString("html"))
+				return Jsoup.parse(webClient.httpPost(url, payload, headers).parseJson().getString("html"))
 
 			} catch (e: Exception) {
 				// Log or handle the exception as needed
@@ -228,6 +230,7 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 		val doc = webClient.httpGet(mangaUrl).parseHtml()
 		val maxPageChapterSelect = doc.select("ul.pagination a.page-link")
 		var maxPageChapter = 1
+		val author = doc.selectFirst("div.show_details span[itemprop=author]")?.text().orEmpty()
 		if (!maxPageChapterSelect.isNullOrEmpty()) {
 			maxPageChapterSelect.map {
 				val i = it.attr("href").substringAfterLast("=").toInt()
@@ -243,7 +246,7 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 				"Abandonné" -> MangaState.ABANDONED
 				else -> null
 			},
-			author = doc.selectFirst("div.show_details span[itemprop=author]")?.text().orEmpty(),
+			authors = setOf(author),
 			description = doc.selectFirst("dd[itemprop=description]")?.text(),
 			rating = doc.getElementById("avgrating")?.ownText()?.toFloatOrNull()?.div(5f) ?: RATING_UNKNOWN,
 			tags = doc.select("ul.list-unstyled li a.category").mapToSet {
@@ -290,7 +293,7 @@ internal class MangaMana(context: MangaLoaderContext) : PagedMangaParser(context
 				val chapterN = href.substringAfterLast('/').replace("-", ".").replace("[^0-9.]".toRegex(), "").toFloat()
 				MangaChapter(
 					id = generateUid(href),
-					name = name,
+					title = name,
 					number = chapterN,
 					volume = 0,
 					url = href,

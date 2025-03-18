@@ -12,17 +12,11 @@ import java.util.*
 
 @MangaSourceParser("DOCTRUYEN3Q", "DocTruyen3Q", "vi")
 internal class DocTruyen3Q(context: MangaLoaderContext) :
-	WpComicsParser(context, MangaParserSource.DOCTRUYEN3Q, "doctruyen3qui2.com", 36) {
+	WpComicsParser(context, MangaParserSource.DOCTRUYEN3Q, "truyen3qvip.com", 36) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain(
-		"doctruyen3qui2.com", // Main domain
-		"doctruyen3qll.net",
-		"doctruyen3q3.net",
-		"doctruyen3qw.com",
-		"doctruyen3qk.pro",
-		"doctruyen3qw.pro",
-		"doctruyen3qvip.com",
-		"truyen3qvip.com", // Backup domain
+		"truyen3qvip.com",
+		"doctruyen3qui3.pro", // Main domain
 	)
 
 	override val datePattern = "dd/MM/yyyy"
@@ -107,13 +101,13 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
 				coverUrl = div.selectFirst("div.image-item img")?.findImageUrl().orEmpty(),
 				title = div.selectFirst("h3 a")?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = mangaTags,
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -153,12 +147,12 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 		}
 
 		return manga.copy(
-			author = author,
+			authors = setOfNotNull(author),
 			description = description,
 			state = state,
 			tags = tags,
 			chapters = getChapters(doc),
-			altTitle = altTitle,
+			altTitles = setOfNotNull(altTitle),
 		)
 	}
 
@@ -172,7 +166,7 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 			val timeText = timeElement?.text()
 			MangaChapter(
 				id = generateUid(href),
-				name = name,
+				title = name,
 				number = number,
 				url = href,
 				uploadDate = parseChapterDate(timeText),
@@ -228,7 +222,21 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		return doc.select("div.page-chapter img").mapNotNull { img ->
-			val url = img.attr("src")?.toAbsoluteUrl(domain) ?: return@mapNotNull null
+			val url = img.attrAsRelativeUrlOrNull("data-original")
+				?: img.attrAsRelativeUrlOrNull("src")
+				?: return@mapNotNull null
+			
+			if (url.contains( // Remove ads images
+				"sp1.jpg") || 
+				url.contains("3q_fake") || 
+				url.contains("sp2.jpg") || 
+				url.contains("3qui3.jpg") || 
+				url.contains("3q_top") ||
+				url.contains("3q282.jpg")
+			) {
+				return@mapNotNull null
+			}
+			
 			MangaPage(
 				id = generateUid(url),
 				url = url,

@@ -2,15 +2,16 @@ package org.koitharu.kotatsu.parsers.site.pt
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGAONLINE", "MangaOnline.biz", "pt")
-internal class MangaOnline(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MANGAONLINE, 20) {
+internal class MangaOnline(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.MANGAONLINE, 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("mangaonline.biz")
 
@@ -70,13 +71,13 @@ internal class MangaOnline(context: MangaLoaderContext) : PagedMangaParser(conte
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				title = div.selectLast(".data h3")?.text().orEmpty(),
 				coverUrl = div.selectFirst("img")?.src().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirst(".rating")?.ownText()?.toFloatOrNull()?.div(10f) ?: RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -111,7 +112,7 @@ internal class MangaOnline(context: MangaLoaderContext) : PagedMangaParser(conte
 				val dateText = a.selectFirst("span.date")?.text()
 				MangaChapter(
 					id = generateUid(href),
-					name = title,
+					title = title,
 					number = i + 1f,
 					volume = 0,
 					url = href,
@@ -136,13 +137,13 @@ internal class MangaOnline(context: MangaLoaderContext) : PagedMangaParser(conte
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				title = div.selectLast(".reltitle h3")?.text().orEmpty(),
 				coverUrl = div.selectFirst("img")?.src().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
-				author = null,
-				isNsfw = isNsfwSource,
+				authors = emptySet(),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}

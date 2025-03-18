@@ -4,8 +4,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -17,7 +17,7 @@ internal abstract class ZMangaParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 16,
-) : PagedMangaParser(context, source, pageSize) {
+) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -165,7 +165,7 @@ internal abstract class ZMangaParser(
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
 				coverUrl = div.selectFirst("img")?.src().orEmpty(),
 				title = div.selectFirstOrThrow("div.flexbox2-title span:not(.studio)").text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = div.selectFirstOrThrow("div.info div.score").ownText().toFloatOrNull()?.div(10f)
 					?: RATING_UNKNOWN,
 				tags = doc.body().select("div.genres a").mapToSet { span ->
@@ -175,10 +175,10 @@ internal abstract class ZMangaParser(
 						source = source,
 					)
 				},
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			)
 		}
 	}
@@ -222,7 +222,7 @@ internal abstract class ZMangaParser(
 
 		val alt = doc.body().selectFirst(selectAlt)?.textOrNull()
 
-		val aut = doc.body().selectFirst(selectAut)?.textOrNull()
+		val author = doc.body().selectFirst(selectAut)?.textOrNull()
 
 		manga.copy(
 			tags = doc.body().select(selectTag).mapToSet { a ->
@@ -233,8 +233,8 @@ internal abstract class ZMangaParser(
 				)
 			},
 			description = desc,
-			altTitle = alt,
-			author = aut,
+			altTitles = setOfNotNull(alt),
+			authors = setOfNotNull(author),
 			state = state,
 			chapters = chaptersDeferred.await(),
 			contentRating = if (doc.getElementById("adt-warning") != null) {
@@ -257,7 +257,7 @@ internal abstract class ZMangaParser(
 			val dateText = li.selectFirst(selectDate)?.text()
 			MangaChapter(
 				id = generateUid(href),
-				name = li.selectFirstOrThrow(".flexch-infoz span:not(.date)").text(),
+				title = li.selectFirstOrThrow(".flexch-infoz span:not(.date)").text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

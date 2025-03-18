@@ -17,9 +17,9 @@ import okio.IOException
 import org.json.JSONArray
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
 import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
@@ -43,11 +43,10 @@ internal abstract class GroupleParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	private val siteId: Int,
-) : MangaParser(context, source), MangaParserAuthProvider, Interceptor {
+) : LegacyMangaParser(context, source), MangaParserAuthProvider, Interceptor {
 
 	@Volatile
 	private var cachedPagesServer: String? = null
-	protected open val defaultIsNsfw = false
 
 	override val userAgentKey = ConfigKey.UserAgent(
 		"Mozilla/5.0 (X11; U; UNICOS lcLinux; en-US) Gecko/20140730 (KHTML, like Gecko, Safari/419.3) Arora/0.8.0",
@@ -103,12 +102,13 @@ internal abstract class GroupleParser(
 		} else {
 			advancedSearch(offset, order, filter).parseHtml()
 		}
-		val tiles =
-			root.selectFirst("div.tiles.row") ?: if (root.select(".alert").any { it.ownText() == NOTHING_FOUND }) {
+		val tiles = root.selectFirst("div.tiles.row")
+		if (tiles == null) {
+			if (!root.getElementsContainingOwnText(NOTHING_FOUND).isNullOrEmpty()) {
 				return emptyList()
-			} else {
-				root.parseFailed("No tiles found")
 			}
+			root.parseFailed("No tiles found")
+		}
 		return tiles.select("div.tile").mapNotNull(::parseManga)
 	}
 
@@ -136,16 +136,18 @@ internal abstract class GroupleParser(
 		}
 		val hashRegex = Regex("window.user_hash\\s*=\\s*\'([^\']+)\'")
 		val userHash = doc.select("script").firstNotNullOfOrNull { it.html().findGroupValue(hashRegex) }
+		val hasNsfwAlert = root.select(".alert-warning").any { it.ownText().contains(NSFW_ALERT) }
 		return manga.copy(
 			source = newSource,
 			title = doc.metaValue("name") ?: manga.title,
-			altTitle = root.selectFirst(".all-names-popover")?.select(".name")?.joinToString { it.text() }
-				?.nullIfEmpty()
-				?: manga.altTitle,
+			altTitles = root.selectFirst(".all-names-popover")?.select(".name")?.mapNotNullToSet {
+				it.textOrNull()
+			} ?: manga.altTitles,
 			publicUrl = response.request.url.toString(),
 			description = root.selectFirst("div.manga-description")?.html(),
 			largeCoverUrl = coverImg?.attrAsAbsoluteUrlOrNull("data-full"),
-			coverUrl = coverImg?.attrAsAbsoluteUrlOrNull("data-thumb") ?: manga.coverUrl,
+			coverUrl = manga.coverUrl
+				?: coverImg?.attrAsAbsoluteUrlOrNull("data-thumb")?.replace("_p.", "."),
 			tags = root.selectFirstOrThrow("div.subject-meta")
 				.getElementsByAttributeValueContaining("href", "/list/genre/").mapTo(manga.tags.toMutableSet()) { a ->
 					MangaTag(
@@ -154,14 +156,11 @@ internal abstract class GroupleParser(
 						source = source,
 					)
 				},
-			author = root.selectFirst("a.person-link")?.textOrNull() ?: manga.author,
-			contentRating = if (manga.isNsfw || root.select(".alert-warning")
-					.any { it.ownText().contains(NSFW_ALERT) }
-			) {
-				ContentRating.ADULT
-			} else {
-				manga.contentRating
-			},
+			authors = root.select(".elem_author,.elem_illustrator,.elem_screenwriter")
+				.select("a.person-link")
+				.mapNotNullToSet { it.textOrNull() } + manga.authors,
+			contentRating = (if (hasNsfwAlert) ContentRating.SUGGESTIVE else ContentRating.SAFE)
+				.coerceAtLeast(manga.contentRating ?: ContentRating.SAFE),
 			chapters = chaptersList?.select("a.chapter-link")
 				?.flatMapChapters(reversed = true) { a ->
 					val tr = a.selectFirstParent("tr") ?: return@flatMapChapters emptyList()
@@ -177,7 +176,7 @@ internal abstract class GroupleParser(
 						listOf(
 							MangaChapter(
 								id = generateUid(href),
-								name = a.text().removePrefix(manga.title).trim(),
+								title = a.text().removePrefix(manga.title).trim().nullIfEmpty(),
 								number = number,
 								volume = volume,
 								url = href.withQueryParam("d", userHash),
@@ -194,7 +193,7 @@ internal abstract class GroupleParser(
 							val link = href.withQueryParam("tran", personId.toString())
 							MangaChapter(
 								id = generateUid(link),
-								name = a.text().removePrefix(manga.title).trim(),
+								title = a.text().removePrefix(manga.title).trim(),
 								number = number,
 								volume = volume,
 								url = link.withQueryParam("d", userHash),
@@ -414,18 +413,19 @@ internal abstract class GroupleParser(
 		if (relUrl.contains("://")) {
 			return null
 		}
+		val author = tileInfo?.selectFirst("a.person-link")?.text()
 		return Manga(
 			id = generateUid(relUrl),
 			url = relUrl,
 			publicUrl = href,
 			title = title,
-			altTitle = descDiv.selectFirst("h5")?.textOrNull(),
-			coverUrl = imgDiv.selectFirst("img.lazy")?.attr("data-original")?.replace("_p.", ".").orEmpty(),
+			altTitles = setOfNotNull(descDiv.selectFirst("h5")?.textOrNull()),
+			coverUrl = imgDiv.selectFirst("img.lazy")?.attrAsAbsoluteUrlOrNull("data-original")?.replace("_p.", "."),
 			rating = runCatching {
 				node.selectFirst(".compact-rate")?.attr("title")?.toFloatOrNull()?.div(5f)
 			}.getOrNull() ?: RATING_UNKNOWN,
-			author = tileInfo?.selectFirst("a.person-link")?.text(),
-			isNsfw = defaultIsNsfw,
+			authors = setOfNotNull(author),
+			contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 			tags = runCatching {
 				tileInfo?.select("a.element-link")?.mapToSet {
 					MangaTag(

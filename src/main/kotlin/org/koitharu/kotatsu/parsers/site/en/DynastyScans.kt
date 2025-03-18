@@ -9,8 +9,8 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.PagedMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -19,7 +19,7 @@ import java.util.*
 
 @MangaSourceParser("DYNASTYSCANS", "DynastyScans", "en")
 internal class DynastyScans(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.DYNASTYSCANS, 117) {
+	LegacyPagedMangaParser(context, MangaParserSource.DYNASTYSCANS, 117) {
 
 	override val configKeyDomain = ConfigKey.Domain("dynasty-scans.com")
 
@@ -86,15 +86,15 @@ internal class DynastyScans(context: MangaLoaderContext) :
 				Manga(
 					id = generateUid(href),
 					title = div.selectFirstOrThrow("div.caption").text(),
-					altTitle = null,
+					altTitles = emptySet(),
 					url = href,
 					publicUrl = href.toAbsoluteUrl(domain),
 					rating = RATING_UNKNOWN,
-					isNsfw = false,
+					contentRating = null,
 					coverUrl = div.selectFirstOrThrow("img").attrAsAbsoluteUrl("src"),
 					tags = setOf(),
 					state = null,
-					author = null,
+					authors = emptySet(),
 					source = source,
 				)
 			}
@@ -107,12 +107,12 @@ internal class DynastyScans(context: MangaLoaderContext) :
 				Manga(
 					id = generateUid(href),
 					title = div.selectFirstOrThrow("a").text(),
-					altTitle = null,
+					altTitles = emptySet(),
 					url = href,
 					publicUrl = href.toAbsoluteUrl(domain),
 					rating = RATING_UNKNOWN,
-					isNsfw = false,
-					coverUrl = "",
+					contentRating = null,
+					coverUrl = null,
 					tags = div.select("span.tags a").mapToSet { a ->
 						MangaTag(
 							key = a.attr("href").removeSuffix('/').substringAfterLast('/'),
@@ -121,7 +121,7 @@ internal class DynastyScans(context: MangaLoaderContext) :
 						)
 					},
 					state = null,
-					author = null,
+					authors = emptySet(),
 					source = source,
 				)
 			}
@@ -179,7 +179,7 @@ internal class DynastyScans(context: MangaLoaderContext) :
 			val dateText = li.select("small").last()?.text()?.replace("released ", "")?.replace("'", "")
 			MangaChapter(
 				id = generateUid(href),
-				name = a.text(),
+				title = a.text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

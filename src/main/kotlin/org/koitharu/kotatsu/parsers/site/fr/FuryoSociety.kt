@@ -5,8 +5,8 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.ErrorMessages
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -16,7 +16,7 @@ import java.util.*
 
 @MangaSourceParser("FURYOSOCIETY", "FuryoSociety", "fr")
 internal class FuryoSociety(context: MangaLoaderContext) :
-	SinglePageMangaParser(context, MangaParserSource.FURYOSOCIETY) {
+	LegacySinglePageMangaParser(context, MangaParserSource.FURYOSOCIETY) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.ALPHABETICAL, SortOrder.UPDATED)
 
@@ -69,15 +69,15 @@ internal class FuryoSociety(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(div.host ?: domain),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				title = (div.selectFirst("div.media-body") ?: div.selectFirst("a"))?.text().orEmpty(),
-				altTitle = null,
+				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
-				author = null,
+				authors = emptySet(),
 				state = null,
 				source = source,
-				isNsfw = false,
+				contentRating = null,
 			)
 		}
 	}
@@ -105,7 +105,7 @@ internal class FuryoSociety(context: MangaLoaderContext) :
 			val dateText = div.selectFirst("div.meta_r")?.text()?.replace("Hier", "1 jour")
 			MangaChapter(
 				id = generateUid(href),
-				name = div.selectFirst("div.title")?.text() + " : " + div.selectFirst("div.name")?.text(),
+				title = div.selectFirst("div.title")?.text() + " : " + div.selectFirst("div.name")?.text(),
 				number = i + 1f,
 				volume = 0,
 				url = href,

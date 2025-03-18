@@ -2,8 +2,6 @@ package org.koitharu.kotatsu.parsers.site.mangareader.en
 
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.sync.withLock
-import okhttp3.FormBody
-import okhttp3.Request
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.model.*
@@ -43,13 +41,8 @@ internal class RizzComic(context: MangaLoaderContext) :
 	private val slugRegex = Regex("""[^a-z0-9]+""")
 	private val searchMangaSelector = ".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx"
 	private suspend fun getRandomPart(): String {
-		val request = Request.Builder()
-			.url("https://$domain$listUrl")
-			.get()
-			.build()
-
-		val response = context.httpClient.newCall(request).await()
-		val url = response.parseHtml()
+		val response = webClient.httpGet("https://$domain$listUrl").parseHtml()
+		val url = response
 			.selectFirst(searchMangaSelector)!!
 			.select("a").attr("href")
 
@@ -74,9 +67,7 @@ internal class RizzComic(context: MangaLoaderContext) :
 			!filter.query.isNullOrEmpty() -> {
 				url = "https://$domain$searchUrl"
 				if (filter.query != "") {
-					FormBody.Builder()
-						.add("search_value", filter.query.trim())
-						.build()
+					mapOf("search_value" to filter.query.trim())
 				} else {
 					null
 				}
@@ -87,43 +78,38 @@ internal class RizzComic(context: MangaLoaderContext) :
 
 				val genres = filter.tags.map { it.key }
 
-				val formBuilder = FormBody.Builder()
-					.add("StatusValue", state)
-					.add("TypeValue", "all")
-					.add("OrderValue", order.toPayloadValue())
+				val form = ArrayMap<String, String>()
+				form["StatusValue"] = state
+				form["TypeValue"] = "all"
+				form["OrderValue"] = order.toPayloadValue()
 
 				genres.forEach { genre ->
-					formBuilder.add("genres_checked[]", genre)
+					form["genres_checked[]"] = genre
 				}
-				formBuilder.build()
+				form
 			}
 		}
-		val request = Request.Builder()
-			.url(url)
-			.apply {
-				if (payload != null) {
-					post(payload)
-				} else {
-					get()
-				}
-			}
-			.build()
-		val response = context.httpClient.newCall(request).execute().parseJsonArray()
+		val response = if (payload != null) {
+			webClient.httpPost(url, payload)
+		} else {
+			webClient.httpGet(url)
+		}.parseJsonArray()
 		return response.mapJSON { j ->
 			val title = j.getString("title")
 			val urlManga = "https://$domain$listUrl/${randomPartCache.get()}-" + title.trim().lowercase()
 				.replace(slugRegex, "-")
 				.replace("-s-", "s-")
 				.replace("-ll-", "ll-")
+			val author = j.getStringOrNull("author")
 
 			val manga = Manga(
 				id = j.getLong("id"),
 				title = title,
-				altTitle = j.getString("description"),
+				altTitles = emptySet(), //j.getString("description"), TODO check
 				url = urlManga.toRelativeUrl(domain),
 				publicUrl = urlManga,
 				rating = j.getFloatOrDefault("rating", RATING_UNKNOWN) / 10f,
-				isNsfw = false,
+				contentRating = null,
 				coverUrl = "https://$domain/assets/images/" + j.getString("image_url"),
 				tags = setOf(),
 				state = when (j.getString("status")) {
@@ -132,7 +118,7 @@ internal class RizzComic(context: MangaLoaderContext) :
 					"hiatus" -> MangaState.PAUSED
 					else -> null
 				},
-				author = j.getStringOrNull("author"),
+				authors = setOfNotNull(author),
 				source = source,
 				description = j.getString("long_description"),
 			)

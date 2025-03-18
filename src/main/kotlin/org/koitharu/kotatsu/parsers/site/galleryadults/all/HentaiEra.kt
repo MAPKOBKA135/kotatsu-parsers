@@ -126,13 +126,14 @@ internal class HentaiEra(context: MangaLoaderContext) :
 		val branch = doc.select(selectLanguageChapter).joinToString(separator = " / ") {
 			it.text()
 		}
+		val author = doc.selectFirst(selectAuthor)?.text()
 		return manga.copy(
 			tags = tag.orEmpty(),
-			author = doc.selectFirst(selectAuthor)?.text(),
+			authors = setOfNotNull(author),
 			chapters = listOf(
 				MangaChapter(
 					id = manga.id,
-					name = manga.title,
+					title = manga.title,
 					number = 1f,
 					volume = 0,
 					url = urlChapters,

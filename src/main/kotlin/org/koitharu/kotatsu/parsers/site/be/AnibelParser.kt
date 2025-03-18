@@ -5,20 +5,23 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
 import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.util.*
+import org.koitharu.kotatsu.parsers.util.generateUid
+import org.koitharu.kotatsu.parsers.util.getDomain
 import org.koitharu.kotatsu.parsers.util.json.asTypedList
 import org.koitharu.kotatsu.parsers.util.json.mapJSON
 import org.koitharu.kotatsu.parsers.util.json.mapJSONIndexed
 import org.koitharu.kotatsu.parsers.util.json.mapJSONNotNull
+import org.koitharu.kotatsu.parsers.util.nullIfEmpty
+import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
 import java.util.*
 
 @Broken
 @MangaSourceParser("ANIBEL", "Anibel", "be")
-internal class AnibelParser(context: MangaLoaderContext) : MangaParser(context, MangaParserSource.ANIBEL) {
+internal class AnibelParser(context: MangaLoaderContext) : LegacyMangaParser(context, MangaParserSource.ANIBEL) {
 
 	override val configKeyDomain = ConfigKey.Domain("anibel.net")
 
@@ -89,9 +92,9 @@ internal class AnibelParser(context: MangaLoaderContext) : MangaParser(context, 
 				title = title.getString("be"),
 				coverUrl = jo.getString("poster").removePrefix("/cdn")
 					.toAbsoluteUrl(getDomain("cdn")) + "?width=200&height=280",
-				altTitle = title.optJSONArray("alt")?.optString(0)?.nullIfEmpty(),
-				author = null,
-				isNsfw = false,
+				altTitles = setOfNotNull(title.optJSONArray("alt")?.optString(0)?.nullIfEmpty()),
+				authors = emptySet(),
+				contentRating = null,
 				rating = jo.getDouble("rating").toFloat() / 10f,
 				url = href,
 				publicUrl = "https://${domain}/$href",
@@ -141,7 +144,7 @@ internal class AnibelParser(context: MangaLoaderContext) : MangaParser(context, 
 		).getJSONObject("chapters").getJSONArray("docs")
 		return manga.copy(
 			title = title.getString("be"),
-			altTitle = title.optJSONArray("alt")?.optString(0)?.nullIfEmpty(),
+			altTitles = setOfNotNull(title.optJSONArray("alt")?.optString(0)?.nullIfEmpty()),
 			coverUrl = "$poster?width=200&height=280",
 			largeCoverUrl = poster,
 			description = details.getJSONObject("description").getString("be"),
@@ -156,7 +159,7 @@ internal class AnibelParser(context: MangaLoaderContext) : MangaParser(context, 
 				val number = jo.getInt("chapter")
 				MangaChapter(
 					id = generateUid(jo.getString("id")),
-					name = "Глава $number",
+					title = null,
 					number = number.toFloat(),
 					volume = 0,
 					url = "${manga.url}/read/$number",
@@ -236,9 +239,9 @@ internal class AnibelParser(context: MangaLoaderContext) : MangaParser(context, 
 				title = title.getString("be"),
 				coverUrl = jo.getString("poster").removePrefix("/cdn")
 					.toAbsoluteUrl(getDomain("cdn")) + "?width=200&height=280",
-				altTitle = title.getString("en").nullIfEmpty(),
-				author = null,
-				isNsfw = false,
+				altTitles = setOfNotNull(title.getString("en").nullIfEmpty()),
+				authors = emptySet(),
+				contentRating = null,
 				rating = RATING_UNKNOWN,
 				url = href,
 				publicUrl = "https://${domain}/$href",

@@ -3,8 +3,8 @@ package org.koitharu.kotatsu.parsers.site.ru.multichan
 import okhttp3.HttpUrl
 import org.jsoup.internal.StringUtil
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
+import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
 import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -14,7 +14,7 @@ import java.util.*
 internal abstract class ChanParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
-) : MangaParser(context, source), MangaParserAuthProvider {
+) : LegacyMangaParser(context, source), MangaParserAuthProvider {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.NEWEST,
@@ -50,16 +50,17 @@ internal abstract class ChanParser(
 				?: return@mapNotNull null
 			val href = a.attrAsRelativeUrl("href")
 			val title = a.text().parseTitle()
+			val author = row.getElementsByAttributeValueStarting(
+				"href",
+				"/mangaka",
+			).firstOrNull()?.text()
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(a.host ?: domain),
-				altTitle = title.second,
+				altTitles = setOfNotNull(title.second),
 				title = title.first,
-				author = row.getElementsByAttributeValueStarting(
-					"href",
-					"/mangaka",
-				).firstOrNull()?.text(),
+				authors = setOfNotNull(author),
 				coverUrl = row.selectFirst("div.manga_images")?.selectFirst("img")
 					?.absUrl("src").orEmpty(),
 				tags = runCatching {
@@ -73,7 +74,7 @@ internal abstract class ChanParser(
 				}.getOrNull().orEmpty(),
 				rating = RATING_UNKNOWN,
 				state = null,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -91,7 +92,7 @@ internal abstract class ChanParser(
 					?: return@mapChapters null
 				MangaChapter(
 					id = generateUid(href),
-					name = tr.selectFirst("a")?.text().orEmpty(),
+					title = tr.selectFirst("a")?.textOrNull(),
 					number = i + 1f,
 					volume = 0,
 					url = href,
@@ -165,21 +166,22 @@ internal abstract class ChanParser(
 			val a = info.selectFirst("a") ?: return@mapNotNull null
 			val href = a.attrAsRelativeUrl("href")
 			val title = a.text().parseTitle()
+			val author = info.getElementsByAttributeValueStarting(
+				"href",
+				"/mangaka",
+			).firstOrNull()?.text()
 			Manga(
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(a.host ?: domain),
-				altTitle = title.second,
+				altTitles = setOfNotNull(title.second),
 				title = title.first,
-				author = info.getElementsByAttributeValueStarting(
-					"href",
-					"/mangaka",
-				).firstOrNull()?.text(),
+				authors = setOfNotNull(author),
 				coverUrl = div.selectFirst("img")?.absUrl("src").orEmpty(),
 				tags = emptySet(),
 				rating = RATING_UNKNOWN,
 				state = null,
-				isNsfw = isNsfwSource,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
 				source = source,
 			)
 		}
@@ -247,7 +249,7 @@ internal abstract class ChanParser(
 			if (c == '(') {
 				depth--
 				if (depth == 0 && (i + 2) < lastIndex && i > 0) {
-					return substring(i + 1, lastIndex).trim() to substring(0, i).trim()
+					return substring(i + 1, lastIndex).trim() to substring(0, i).trim().nullIfEmpty()
 				}
 			} else if (c == ')') {
 				depth++

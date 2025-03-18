@@ -20,6 +20,7 @@ internal class MangasNoSekai(context: MangaLoaderContext) :
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		val body = doc.body()
 		val chaptersDeferred = async { loadChapters(manga.url, doc) }
+		val author = doc.selectFirst("section#section-sinopsis div.d-flex:has(div:contains(Autor)) p a")?.textOrNull()
 		manga.copy(
 			tags = doc.body().select("#section-sinopsis a[href*=genre]").mapToSet { a ->
 				MangaTag(
@@ -28,11 +29,12 @@ internal class MangasNoSekai(context: MangaLoaderContext) :
 					source = source,
 				)
 			},
-			author = doc.selectFirst("section#section-sinopsis div.d-flex:has(div:contains(Autor)) p a")
-				?.textOrNull(),
+			authors = setOfNotNull(author),
 			description = body.selectFirst("#section-sinopsis p")?.text().orEmpty(),
-			altTitle = doc.selectFirst("section#section-sinopsis div.d-flex:has(div:contains(Otros nombres)) p")
-				?.textOrNull(),
+			altTitles = setOfNotNull(
+				doc.selectFirst("section#section-sinopsis div.d-flex:has(div:contains(Otros nombres)) p")
+					?.textOrNull(),
+			),
 			state = body.selectFirst("section#section-sinopsis div.d-flex:has(div:contains(Estado)) p")
 				?.let {
 					when (it.text()) {
@@ -60,7 +62,7 @@ internal class MangasNoSekai(context: MangaLoaderContext) :
 				MangaChapter(
 					id = generateUid(href),
 					url = link,
-					name = name,
+					title = name,
 					number = i + 1f,
 					volume = 0,
 					branch = null,
