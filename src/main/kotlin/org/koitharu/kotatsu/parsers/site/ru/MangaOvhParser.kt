@@ -15,7 +15,7 @@ import org.koitharu.kotatsu.parsers.util.json.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-@MangaSourceParser("MANGA_OVH", "MangaOvh", "ru")
+@MangaSourceParser("MANGA_OVH", "Манга ОВХ", "ru")
 internal class MangaOvhParser(
 	context: MangaLoaderContext,
 ) : LegacyPagedMangaParser(context, MangaParserSource.MANGA_OVH, pageSize = 20) {
