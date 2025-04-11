@@ -74,32 +74,38 @@ internal class WaMangaParser(
 
 
 	override suspend fun getDetails(manga: Manga): Manga {
+    val url = "https://$domain/api${manga.url}"
+    val doc = webClient.httpGet(url).parseJson().getJSONObject("comic")
 
-		val url = "https://$domain/api${manga.url}"
-		val doc = webClient.httpGet(url).parseJson().getJSONObject("comic")
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", sourceLocale)
 
-		val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", sourceLocale)
-		return manga.copy(
-			url = doc.getString("url"),
-			title = doc.getString("title"),
-			largeCoverUrl = doc.getString("thumbnail"),
-			description = doc.getStringOrNull("description") ?: manga.description,
-			chapters = doc.getJSONArray("chapters").asTypedList<JSONObject>().mapChapters { _, it ->
-				val chapterUrl = it.getString("url")
-				MangaChapter(
-					id = generateUid(chapterUrl),
-					url = chapterUrl,
-					source = source,
-					number = it.getFloatOrDefault("chapter", 0f),
-					volume = it.getIntOrDefault("volume", 0),
-					title = it.getStringOrNull("full_title"),
-					scanlator = it.getJSONArray("teams").getJSONObject(0)?.getStringOrNull("name"),
-					uploadDate = dateFormat.tryParse(it.getStringOrNull("published_on")),
-					branch = null,
-				)
-			},
-		)
-	}
+    val chapters = doc.getJSONArray("chapters")
+        .asTypedList<JSONObject>()
+        .mapChapters { _, it ->
+            val chapterUrl = it.getString("url")
+            MangaChapter(
+                id = generateUid(chapterUrl),
+                url = chapterUrl,
+                source = source,
+                number = it.getFloatOrDefault("chapter", 0f),
+                volume = it.getIntOrDefault("volume", 0),
+                title = it.getStringOrNull("full_title"),
+                scanlator = it.getJSONArray("teams").getJSONObject(0)?.getStringOrNull("name"),
+                uploadDate = dateFormat.tryParse(it.getStringOrNull("published_on")),
+                branch = null,
+            )
+        }
+        .sortedWith(compareByDescending<MangaChapter> { it.volume }
+            .thenByDescending { it.number })
+
+    return manga.copy(
+        url = doc.getString("url"),
+        title = doc.getString("title"),
+        largeCoverUrl = doc.getString("thumbnail"),
+        description = doc.getStringOrNull("description") ?: manga.description,
+        chapters = chapters,
+    )
+}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		return webClient.httpGet("https://$domain/api${chapter.url}")
