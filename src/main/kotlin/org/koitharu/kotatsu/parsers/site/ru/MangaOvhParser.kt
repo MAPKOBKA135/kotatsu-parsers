@@ -15,7 +15,7 @@ import org.koitharu.kotatsu.parsers.util.json.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-@MangaSourceParser("MANGA_OVH", "MangaOvh", "ru")
+@MangaSourceParser("MANGA_OVH", "Манга ОВХ", "ru")
 internal class MangaOvhParser(
 	context: MangaLoaderContext,
 ) : LegacyPagedMangaParser(context, MangaParserSource.MANGA_OVH, pageSize = 20) {
@@ -190,7 +190,7 @@ internal class MangaOvhParser(
 		return ja.mapJSON { jo -> jo.toManga() }
 	}
 
-	override suspend fun getPageUrl(page: MangaPage): String = page.url
+	override suspend fun getPageUrl(page: MangaPage): String = page.url+"?width=1200&type=webp&quality=75"
 
 	private suspend fun getChapters(mangaId: String): List<MangaChapter> {
 		val url =
