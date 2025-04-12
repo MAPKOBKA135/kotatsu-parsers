@@ -74,51 +74,30 @@ internal class WaMangaParser(
 
 
 	override suspend fun getDetails(manga: Manga): Manga {
+
 		val url = "https://$domain/api${manga.url}"
 		val doc = webClient.httpGet(url).parseJson().getJSONObject("comic")
 
 		val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", sourceLocale)
-
-		val rawChapters = doc.getJSONArray("chapters")
-			.asTypedList<JSONObject>()
-
-		// Лог для отладки
-		println("=== RAW CHAPTERS ===")
-		rawChapters.forEachIndexed { index, it ->
-			println("[$index] url=${it.getString("url")}, chapter=${it.opt("chapter")}, volume=${it.opt("volume")}, published_on=${it.opt("published_on")}, title=${it.opt("full_title")}")
-		}
-
-		// Функция для извлечения номера главы из строки
-		fun extractChapterNumber(title: String?): Float {
-			val regex = Regex("""\d+(\.\d+)?""")
-			return title?.let { regex.find(it)?.value?.toFloatOrNull() } ?: 0f
-		}
-
-		val chapters = rawChapters
-			.map { chapterJson ->
-				val chapterUrl = chapterJson.getString("url")
-				val title = chapterJson.getStringOrNull("full_title") ?: chapterJson.getStringOrNull("title")
-
-				MangaChapter(
-					id = generateUid(chapterUrl),
-					url = chapterUrl,
-					source = source,
-					number = chapterJson.getFloatOrDefault("chapter", 0f),
-					volume = chapterJson.getIntOrDefault("volume", 0),
-					title = title,
-					scanlator = chapterJson.getJSONArray("teams").getJSONObject(0)?.getStringOrNull("name"),
-					uploadDate = dateFormat.tryParse(chapterJson.getStringOrNull("published_on")),
-					branch = null,
-				)
-			}
-			.sortedByDescending { extractChapterNumber(it.title) }
-
 		return manga.copy(
 			url = doc.getString("url"),
 			title = doc.getString("title"),
 			largeCoverUrl = doc.getString("thumbnail"),
 			description = doc.getStringOrNull("description") ?: manga.description,
-			chapters = chapters,
+			chapters = doc.getJSONArray("chapters").asTypedList<JSONObject>().reversed().mapChapters { _, it ->
+				val chapterUrl = it.getString("url")
+				MangaChapter(
+					id = generateUid(chapterUrl),
+					url = chapterUrl,
+					source = source,
+					number = it.getFloatOrDefault("chapter", 0f),
+					volume = it.getIntOrDefault("volume", 0),
+					title = it.getStringOrNull("full_title"),
+					scanlator = it.getJSONArray("teams").getJSONObject(0)?.getStringOrNull("name"),
+					uploadDate = dateFormat.tryParse(it.getStringOrNull("published_on")),
+					branch = null,
+				)
+			},
 		)
 	}
 
