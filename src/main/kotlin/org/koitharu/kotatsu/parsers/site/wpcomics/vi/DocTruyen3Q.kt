@@ -12,12 +12,7 @@ import java.util.*
 
 @MangaSourceParser("DOCTRUYEN3Q", "DocTruyen3Q", "vi")
 internal class DocTruyen3Q(context: MangaLoaderContext) :
-	WpComicsParser(context, MangaParserSource.DOCTRUYEN3Q, "doctruyen3qui5.pro", 36) {
-
-	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain(
-		"doctruyen3qui6.pro",
-		"truyen3qvip.com"
-	)
+	WpComicsParser(context, MangaParserSource.DOCTRUYEN3Q, "doctruyen3qui8.pro", 36) {
 
 	override val datePattern = "dd/MM/yyyy"
 
@@ -248,9 +243,11 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 	           url.contains("sp2.jpg") ||
 			   url.contains("3qui5.jpg") ||
 	           url.contains("3qui6.jpg") ||
+			   url.contains("3qui8.jpg") ||
 	           url.contains("3q_top") ||
 	           url.contains("3q282.jpg") ||
-	           url.contains("3qui5_banner.jpg")
+	           url.contains("3qui5_banner.jpg") ||
+			   url.contains("dt3qui8.jpg")
 	}
 
 	private fun availableTags(): Set<MangaTag> = setOf(
