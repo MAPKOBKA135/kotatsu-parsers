@@ -39,7 +39,7 @@ internal abstract class LibSocialParser(
 	}
 
 	override suspend fun getUsername(): String = getAuthData()
-		?.optJSONObject("auth")
+		?.getJSONObject("auth")
 		?.getString("username")
 		?: throw AuthRequiredException(source)
 
@@ -151,7 +151,7 @@ internal abstract class LibSocialParser(
 			},
 		)
 		val json = webClient.httpGet(urlBuilder.build()).parseJson()
-		val data = json.optJSONArray("data")
+		val data = json.getJSONArray("data")
 		return data.mapJSON(::parseManga)
 	}
 
@@ -168,14 +168,14 @@ internal abstract class LibSocialParser(
 			.addQueryParameter("fields[]", "tags")
 			.addQueryParameter("fields[]", "authors")
 			.build()
-		val json = webClient.httpGet(url).parseJson().optJSONObject("data")
-		val genres = json.optJSONArray("genres").mapJSON { jo ->
+		val json = webClient.httpGet(url).parseJson().getJSONObject("data")
+		val genres = json.getJSONArray("genres").mapJSON { jo ->
 			MangaTag(title = jo.getString("name"), key = "g" + jo.getInt("id"), source = source)
 		}
-		val tags = json.optJSONArray("genres").mapJSON { jo ->
+		val tags = json.getJSONArray("genres").mapJSON { jo ->
 			MangaTag(title = jo.getString("name"), key = "t" + jo.getInt("id"), source = source)
 		}
-		val author = json.optJSONArray("authors").optJSONObject(0)?.getStringOrNull("name")
+		val author = json.getJSONArray("authors").optJSONObject(0)?.getStringOrNull("name")
 		manga.copy(
 			title = json.getStringOrNull("rus_name") ?: manga.title,
 			altTitles = setOfNotNull(json.getStringOrNull("name")),
@@ -190,12 +190,12 @@ internal abstract class LibSocialParser(
 		val pages = async {
 			webClient.httpGet(
 				concatUrl("https://$apiHost/api/manga/", chapter.url),
-			).parseJson().optJSONObject("data")
+			).parseJson().getJSONObject("data")
 		}
 		val servers = imageServers.get()
 		val json = pages.await()
 		val primaryServer = getPrimaryImageServer(servers)
-		json.optJSONArray("pages").mapJSON { jo ->
+		json.getJSONArray("pages").mapJSON { jo ->
 			val url = jo.getString("url")
 			MangaPage(
 				id = generateUid(jo.getLong("id")),
@@ -222,9 +222,9 @@ internal abstract class LibSocialParser(
 				.addPathSegment(seed.url)
 				.addPathSegment("similar")
 				.build(),
-		).parseJson().optJSONArray("data")
+		).parseJson().getJSONArray("data")
 		return json.mapJSON { jo ->
-			parseManga(jo.optJSONObject("media"))
+			parseManga(jo.getJSONObject("media"))
 		}
 	}
 
@@ -240,8 +240,8 @@ internal abstract class LibSocialParser(
 	}
 
 	private fun parseManga(jo: JSONObject): Manga {
-		val cover = jo.optJSONObject("cover")
-		val isNsfwSource = jo.optJSONObject("ageRestriction").getIntOrDefault("id", 0) >= 3
+		val cover = jo.getJSONObject("cover")
+		val isNsfwSource = jo.getJSONObject("ageRestriction").getIntOrDefault("id", 0) >= 3
 		return Manga(
 			id = generateUid(jo.getLong("id")),
 			title = jo.getString("rus_name").ifEmpty { jo.getString("name") },
@@ -279,12 +279,12 @@ internal abstract class LibSocialParser(
 			.addPathSegment(manga.url)
 			.addPathSegment("chapters")
 			.build()
-		val json = webClient.httpGet(url).parseJson().optJSONArray("data")
+		val json = webClient.httpGet(url).parseJson().getJSONArray("data")
 		val builder = ChaptersListBuilder(json.length())
 		val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
 		val useBranching = config[splitTranslationsKey]
 		for (i in 0 until json.length()) {
-			val jo = json.optJSONObject(i)
+			val jo = json.getJSONObject(i)
 			val volume = jo.getIntOrDefault("volume", 0)
 			val number = jo.getFloatOrDefault("number", 0f)
 			val numberString = number.formatSimple()
@@ -292,11 +292,11 @@ internal abstract class LibSocialParser(
 				if (volume > 0) append("Том ").append(volume).append(' ')
 				append("Глава ").append(numberString)
 			}
-			val branches = jo.optJSONArray("branches")
+			val branches = jo.getJSONArray("branches")
 			for (j in 0 until branches.length()) {
-				val bjo = branches.optJSONObject(j)
+				val bjo = branches.getJSONObject(j)
 				val id = bjo.getLong("id")
-				val team = bjo.optJSONArray("teams").optJSONObject(0)?.getStringOrNull("name")
+				val team = bjo.getJSONArray("teams").optJSONObject(0)?.getStringOrNull("name")
 				builder += MangaChapter(
 					id = generateUid(id),
 					title = name,
@@ -319,10 +319,10 @@ internal abstract class LibSocialParser(
 				.scheme(SCHEME_HTTPS)
 				.host(apiHost)
 				.addPathSegment("api").addPathSegment(type).build(),
-		).parseJson().optJSONArray("data")
+		).parseJson().getJSONArray("data")
 		val prefix = type.first().toString()
 		return data.mapJSONNotNull { jo ->
-			val sites = jo.optJSONArray("site_ids").toIntSet()
+			val sites = jo.getJSONArray("site_ids").toIntSet()
 			if (siteId !in sites) {
 				return@mapJSONNotNull null
 			}
@@ -343,11 +343,11 @@ internal abstract class LibSocialParser(
 				.addPathSegment("constants")
 				.addQueryParameter("fields[]", "imageServers")
 				.build(),
-		).parseJson().optJSONObject("data").optJSONArray("imageServers")
+		).parseJson().getJSONObject("data").getJSONArray("imageServers")
 		val result = MutableScatterMap<String, String>()
 		for (i in 0 until json.length()) {
-			val jo = json.optJSONObject(i)
-			val sites = jo.optJSONArray("site_ids").toIntSet()
+			val jo = json.getJSONObject(i)
+			val sites = jo.getJSONArray("site_ids").toIntSet()
 			if (siteId !in sites) {
 				continue
 			}

@@ -12,5 +12,5 @@ internal class HentaiLibParser(context: MangaLoaderContext) : LibSocialParser(
 	context = context,
 	source = MangaParserSource.HENTAILIB,
 	siteId = 4,
-	siteDomain = "hentailib.me",
+	siteDomain = "test-front.hentailib.me",
 )
