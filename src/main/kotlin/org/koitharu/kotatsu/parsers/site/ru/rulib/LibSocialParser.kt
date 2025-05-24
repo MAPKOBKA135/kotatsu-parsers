@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.parsers.site.ru.rulib
 
 import androidx.collection.*
-import jdk.internal.org.jline.utils.Log
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
@@ -388,20 +387,11 @@ internal abstract class LibSocialParser(
 		return result
 	}
 
-//	private suspend fun getAuthData(): JSONObject? {
-//		val raw = WebViewHelper(context).getLocalStorageValue(domain, "auth") ?: return null
-//		return JSONObject(raw.unescapeJson().removeSurrounding('"'))
-//	}
-
 	private suspend fun getAuthData(): JSONObject? {
-		return try {
-			val raw = WebViewHelper(context).getLocalStorageValue(domain, "auth") ?: return null
-			JSONObject(raw.unescapeJson().removeSurrounding('"'))
-		} catch (e: Exception) {
-			Log.error("LibSocialParser", "Failed to parse auth data", e)
-			null
-		}
+		val raw = WebViewHelper(context).getLocalStorageValue(domain, "auth") ?: return null
+		return JSONObject(raw.unescapeJson().removeSurrounding('"'))
 	}
+
 	protected companion object {
 
 		const val SERVER_MAIN = "main"
