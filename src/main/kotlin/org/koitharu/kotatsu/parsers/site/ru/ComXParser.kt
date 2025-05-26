@@ -85,36 +85,35 @@ internal class ComXParser(context: MangaLoaderContext) :
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		return doc.select("div.readed.d-flex.short").map { item ->
 			val a = item.selectFirstOrThrow("a.readed__img.img-fit-cover.anim")
+			val img = item.selectFirst("img[data-src]")
+			val href = a.attrAsRelativeUrl("href")
 			val titleElement = item.selectFirstOrThrow("h3.readed__title a")
-val (mainTitle, altTitle) = titleElement.text()
-    .split("\\s*/\\s*".toRegex())
-    .map { it.trim() }
-    .let { parts ->
-        when {
-            parts.size >= 2 -> parts[1] to parts[0]
-            parts.isNotEmpty() -> parts[0] to ""
-            else -> "" to ""
-        }
-    }
+			val (mainTitle, altTitle) = titleElement.text()
+				.split("\\s*/\\s*".toRegex())
+				.map { it.trim() }
+				.let { parts ->
+					when {
+						parts.size >= 2 -> parts[1] to parts[0]
+						parts.isNotEmpty() -> parts[0] to ""
+						else -> "" to ""
+					}
+				}
 
-val img = item.selectFirst("img[data-src]")
-val href = a.attrAsRelativeUrl("href")
-
-Manga(
-    id = generateUid(href),
-    url = href,
-    publicUrl = a.attrAsAbsoluteUrl("href"),
-    title = mainTitle,
-    altTitles = if (altTitle.isNotEmpty()) setOf(altTitle) else emptySet(),
-    authors = emptySet(),
-    description = null,
-    tags = emptySet(),
-    rating = RATING_UNKNOWN,
-    state = null,
-    coverUrl = img?.attrAsAbsoluteUrlOrNull("data-src"),
-    contentRating = if (isNsfwSource) ContentRating.ADULT else null,
-    source = source,
-)
+			Manga(
+				id = generateUid(href),
+				url = href,
+				publicUrl = a.attrAsAbsoluteUrl("href"),
+				title = mainTitle,
+				altTitles = if (altTitle.isNotEmpty()) setOf(altTitle) else emptySet(),
+				authors = emptySet(),
+				description = null,
+				tags = emptySet(),
+				rating = RATING_UNKNOWN,
+				state = null,
+				coverUrl = img?.attrAsAbsoluteUrlOrNull("data-src"),
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				source = source,
+			)
 		}
 	}
 
