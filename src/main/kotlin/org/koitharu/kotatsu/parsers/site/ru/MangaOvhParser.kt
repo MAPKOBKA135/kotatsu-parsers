@@ -8,7 +8,7 @@ import org.koitharu.kotatsu.parsers.InternalParsersApi
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
@@ -16,9 +16,9 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGA_OVH", "Манга ОВХ", "ru")
-internal class MangaOvhParser(
+internal class MangaWtfParser(
 	context: MangaLoaderContext,
-) : LegacyPagedMangaParser(context, MangaParserSource.MANGA_OVH, pageSize = 20) {
+) : PagedMangaParser(context, MangaParserSource.MANGA_OVH, pageSize = 20) {
 
 	override val availableSortOrders: Set<SortOrder> =
 		EnumSet.of(
@@ -29,7 +29,7 @@ internal class MangaOvhParser(
 		)
 
 	@InternalParsersApi
-	override val configKeyDomain = ConfigKey.Domain("manga.ovh")
+	override val configKeyDomain = ConfigKey.Domain("zenmanga.me")
 
 	override val filterCapabilities: MangaListFilterCapabilities
 		get() = MangaListFilterCapabilities(
@@ -90,6 +90,7 @@ internal class MangaOvhParser(
 								MangaState.ABANDONED -> ""
 								MangaState.PAUSED -> "FROZEN"
 								MangaState.UPCOMING -> "ANNOUNCE"
+								else -> throw IllegalArgumentException("$it not supported")
 							}
 						},
 					)
@@ -190,7 +191,7 @@ internal class MangaOvhParser(
 		return ja.mapJSON { jo -> jo.toManga() }
 	}
 
-	override suspend fun getPageUrl(page: MangaPage): String = page.url+"?width=1200&type=webp&quality=75"
+	override suspend fun getPageUrl(page: MangaPage): String = page.url +"?width=1200&type=webp&quality=75"
 
 	private suspend fun getChapters(mangaId: String): List<MangaChapter> {
 		val url =
@@ -213,7 +214,7 @@ internal class MangaOvhParser(
 					volume = volume,
 					url = jo.getString("id"),
 					scanlator = null,
-					uploadDate = dateFormat.tryParse(jo.getString("createdAt")),
+					uploadDate = dateFormat.parseSafe(jo.getString("createdAt")),
 					branch = branches.getOrPut(branchId) { getBranchName(branchId) },
 					source = source,
 				)
