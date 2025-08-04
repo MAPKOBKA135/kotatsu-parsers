@@ -4,7 +4,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.site.wpcomics.WpComicsParser
 import org.koitharu.kotatsu.parsers.util.*
@@ -13,7 +12,7 @@ import java.text.SimpleDateFormat
 
 @MangaSourceParser("NETTRUYEN", "NetTruyen", "vi")
 internal class NetTruyen(context: MangaLoaderContext) :
-	WpComicsParser(context, MangaParserSource.NETTRUYEN, "nettruyenrr.com", 36) {
+	WpComicsParser(context, MangaParserSource.NETTRUYEN, "nettruyenar.com", 36) {
 
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
@@ -61,7 +60,7 @@ internal class NetTruyen(context: MangaLoaderContext) :
 				volume = 0,
 				url = chapterUrl,
 				scanlator = null,
-				uploadDate = df.tryParse(jo.getString("updated_at")),
+				uploadDate = df.parseSafe(jo.getString("updated_at")),
 				branch = null,
 				source = source,
 			)

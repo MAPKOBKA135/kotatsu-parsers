@@ -7,7 +7,7 @@ import okhttp3.Headers
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.network.UserAgents
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -20,7 +20,7 @@ internal abstract class YuriGardenParser(
 	source: MangaParserSource,
 	domain: String,
 	protected val isR18Enable: Boolean = false
-) : LegacyPagedMangaParser(context, source, 18) {
+) : PagedMangaParser(context, source, 18) {
 
 	private val availableTags = suspendLazy(initializer = ::fetchTags)
 
@@ -174,7 +174,7 @@ internal abstract class YuriGardenParser(
 		manga.copy(
 			altTitles = altTitles,
 			authors = authors,
-			chapters = chaptersDeferred.await().mapChapters() { _, jo ->
+			chapters = chaptersDeferred.await().mapChapters { _, jo ->
 				val chapId = jo.getLong("id")
 				MangaChapter(
 					id = generateUid(chapId),

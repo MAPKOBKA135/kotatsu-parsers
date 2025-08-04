@@ -8,7 +8,7 @@ import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
@@ -20,7 +20,7 @@ private const val CHAPTERS_LIMIT = 99999
 
 @MangaSourceParser("COMICK_FUN", "ComicK")
 internal class ComickFunParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.COMICK_FUN, 20) {
+	PagedMangaParser(context, MangaParserSource.COMICK_FUN, 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("comick.io")
 
@@ -230,7 +230,7 @@ internal class ComickFunParser(context: MangaLoaderContext) :
 				url = jo.getString("hid"),
 				scanlator = jo.optJSONArray("group_name")?.asTypedList<String>()?.joinToString()
 					?.takeUnless { it.isBlank() },
-				uploadDate = dateFormat.tryParse(jo.getString("created_at").substringBefore('T')),
+				uploadDate = dateFormat.parseSafe(jo.getString("created_at").substringBefore('T')),
 				branch = branch,
 				source = source,
 			)

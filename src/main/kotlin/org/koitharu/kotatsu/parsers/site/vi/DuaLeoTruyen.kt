@@ -4,7 +4,7 @@ import okhttp3.internal.closeQuietly
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
@@ -13,10 +13,10 @@ import java.util.*
 
 @MangaSourceParser("DUALEOTRUYEN", "Dưa Leo Truyện", "vi", type = ContentType.HENTAI)
 internal class DuaLeoTruyen(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.DUALEOTRUYEN, 60) {
+	PagedMangaParser(context, MangaParserSource.DUALEOTRUYEN, 60) {
 
 	override val configKeyDomain: ConfigKey.Domain
-		get() = ConfigKey.Domain("dualeotruyenp.com")
+		get() = ConfigKey.Domain("dualeotruyenpm.com")
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
 
@@ -118,7 +118,7 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 					number = i + 1f,
 					url = href,
 					scanlator = null,
-					uploadDate = dateFormat.tryParse(dateText),
+					uploadDate = dateFormat.parseSafe(dateText),
 					branch = null,
 					source = source,
 					volume = 0,
@@ -144,7 +144,7 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 			).closeQuietly()
 		}
 
-		return doc.select(".content_view_chap img").mapIndexed { i, img ->
+		return doc.select(".content_view_chap img").mapIndexed { _, img ->
 			val url = img.absUrl("data-original")
 			MangaPage(
 				id = generateUid(url),

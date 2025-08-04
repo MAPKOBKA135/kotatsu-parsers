@@ -1,11 +1,10 @@
 package org.koitharu.kotatsu.parsers.site.en
 
 import org.json.JSONObject
-import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -19,7 +18,7 @@ import java.util.*
 
 @MangaSourceParser("COMX", "Com-X", "ru", ContentType.COMICS)
 internal class ComXParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.COMX, 20) {
+	PagedMangaParser(context, MangaParserSource.COMX, 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("comx.life")
 
@@ -141,7 +140,7 @@ internal class ComXParser(context: MangaLoaderContext) :
 				url = "/reader/$newsId/$chapterId",
 				number = chapter.getFloatOrDefault("posi", 0f),
 				title = decodeText(chapter.getStringOrNull("title")),
-				uploadDate = dateFormat.tryParse(chapter.getStringOrNull("date")),
+				uploadDate = dateFormat.parseSafe(chapter.getStringOrNull("date")),
 				source = source,
 				scanlator = null,
 				branch = null,

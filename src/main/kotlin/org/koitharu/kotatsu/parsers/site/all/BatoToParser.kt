@@ -8,7 +8,7 @@ import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -20,7 +20,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 @MangaSourceParser("BATOTO", "Bato.To")
-internal class BatoToParser(context: MangaLoaderContext) : LegacyPagedMangaParser(
+internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
 	context = context,
 	source = MangaParserSource.BATOTO,
 	pageSize = 60,
@@ -69,7 +69,13 @@ internal class BatoToParser(context: MangaLoaderContext) : LegacyPagedMangaParse
 
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
 		availableTags = fetchAvailableTags(),
-		availableStates = EnumSet.allOf(MangaState::class.java),
+		availableStates = EnumSet.of(
+			MangaState.ONGOING,
+			MangaState.FINISHED,
+			MangaState.ABANDONED,
+			MangaState.PAUSED,
+			MangaState.UPCOMING,
+		),
 		availableContentRating = EnumSet.of(ContentRating.SAFE),
 		availableLocales = setOf(
 			Locale.CHINESE, Locale.ENGLISH, Locale.US, Locale.FRENCH, Locale.GERMAN, Locale.ITALIAN, Locale.JAPANESE,
@@ -153,6 +159,7 @@ internal class BatoToParser(context: MangaLoaderContext) : LegacyPagedMangaParse
 								MangaState.ABANDONED -> "cancelled"
 								MangaState.PAUSED -> "hiatus"
 								MangaState.UPCOMING -> "pending"
+								else -> throw IllegalArgumentException("$it not supported")
 							},
 						)
 					}

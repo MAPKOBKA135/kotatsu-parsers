@@ -15,7 +15,7 @@ import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.bitmap.Rect
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
 import org.koitharu.kotatsu.parsers.exception.TooManyRequestExceptions
 import org.koitharu.kotatsu.parsers.model.*
@@ -32,7 +32,7 @@ private val TAG_PREFIXES = arrayOf("male:", "female:", "other:")
 @MangaSourceParser("EXHENTAI", "ExHentai", type = ContentType.HENTAI)
 internal class ExHentaiParser(
 	context: MangaLoaderContext,
-) : LegacyPagedMangaParser(context, MangaParserSource.EXHENTAI, pageSize = 25), MangaParserAuthProvider, Interceptor {
+) : PagedMangaParser(context, MangaParserSource.EXHENTAI, pageSize = 25), MangaParserAuthProvider, Interceptor {
 
 	override val availableSortOrders: Set<SortOrder> = setOf(SortOrder.NEWEST)
 
@@ -202,7 +202,7 @@ internal class ExHentaiParser(
 		val uploadDate = gd3
 			?.selectFirst("tr:contains(Posted)")
 			?.selectFirst(".gdt2")?.ownTextOrNull()
-			.let { SimpleDateFormat("yyyy-MM-dd HH:mm", sourceLocale).tryParse(it) }
+			.let { SimpleDateFormat("yyyy-MM-dd HH:mm", sourceLocale).parseSafe(it) }
 		val uploader = gd3
 			?.getElementsByAttributeValueContaining("href", "/uploader/")
 			?.firstOrNull()

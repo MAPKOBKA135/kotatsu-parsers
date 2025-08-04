@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("ELDERMANGA", "Elder Manga", "tr")
 internal class ElderManga(context: MangaLoaderContext):
-    LegacyPagedMangaParser(context, MangaParserSource.ELDERMANGA, 25) {
+    PagedMangaParser(context, MangaParserSource.ELDERMANGA, 25) {
 
     override val configKeyDomain = ConfigKey.Domain("eldermanga.com")
     private val cdnSuffix = "cdn1.$domain"
@@ -159,7 +159,7 @@ internal class ElderManga(context: MangaLoaderContext):
                     volume = 0,
                     url = href,
                     scanlator = null,
-                    uploadDate = el.selectFirst("span")?.text()?.let { dateFormat.tryParse(it) } ?: 0L,
+                    uploadDate = el.selectFirst("span")?.text()?.let { dateFormat.parseSafe(it) } ?: 0L,
                     branch = null,
                     source = source,
                 )

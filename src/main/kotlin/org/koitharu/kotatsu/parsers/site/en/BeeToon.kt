@@ -3,7 +3,7 @@ package org.koitharu.kotatsu.parsers.site.en
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -11,7 +11,7 @@ import java.util.*
 
 @MangaSourceParser("BEETOON", "BeeToon.net", "en")
 internal class BeeToon(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.BEETOON, pageSize = 30) {
+	PagedMangaParser(context, MangaParserSource.BEETOON, pageSize = 30) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED, SortOrder.POPULARITY)
 
@@ -125,7 +125,7 @@ internal class BeeToon(context: MangaLoaderContext) :
 					url = url,
 					scanlator = null,
 					uploadDate = SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.ENGLISH)
-						.tryParse(a.selectFirst(".chapter-date")?.attr("title") ?: "0"),
+						.parseSafe(a.selectFirst(".chapter-date")?.attr("title") ?: "0"),
 					branch = null,
 					source = source,
 				)

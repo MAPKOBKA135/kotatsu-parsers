@@ -7,14 +7,14 @@ import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("TUMANGAONLINE", "TuMangaOnline", "es")
-internal class TuMangaOnlineParser(context: MangaLoaderContext) : LegacyPagedMangaParser(
+internal class TuMangaOnlineParser(context: MangaLoaderContext) : PagedMangaParser(
 	context,
 	source = MangaParserSource.TUMANGAONLINE,
 	pageSize = 24,
@@ -216,7 +216,7 @@ internal class TuMangaOnlineParser(context: MangaLoaderContext) : LegacyPagedMan
 			url = href,
 			scanlator = element.select("div.col-md-6.text-truncate").text(),
 			branch = null,
-			uploadDate = chapterDateFormat.tryParse(element.select("span.badge.badge-primary.p-2").first()?.text()),
+			uploadDate = chapterDateFormat.parseSafe(element.select("span.badge.badge-primary.p-2").first()?.text()),
 			source = source,
 		)
 	}
@@ -233,7 +233,7 @@ internal class TuMangaOnlineParser(context: MangaLoaderContext) : LegacyPagedMan
 			url = href,
 			scanlator = element.select("div.col-md-6.text-truncate").text(),
 			branch = null,
-			uploadDate = chapterDateFormat.tryParse(element.select("span.badge.badge-primary.p-2").first()?.text()),
+			uploadDate = chapterDateFormat.parseSafe(element.select("span.badge.badge-primary.p-2").first()?.text()),
 			source = source,
 		)
 	}

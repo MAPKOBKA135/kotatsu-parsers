@@ -4,7 +4,7 @@ import androidx.collection.ArrayMap
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("TRUYENHENTAIVN", "TruyenHentaiVN", "vi", type = ContentType.HENTAI)
 internal class TruyenHentaiVN(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.TRUYENHENTAIVN, 30) {
+	PagedMangaParser(context, MangaParserSource.TRUYENHENTAIVN, 30) {
 
 	private var cacheTags = suspendLazy(initializer = ::fetchTags)
 	override val configKeyDomain = ConfigKey.Domain("truyenhentaivn.club")
@@ -122,7 +122,7 @@ internal class TruyenHentaiVN(context: MangaLoaderContext) :
 				val name = div.selectFirst("a .name")?.text() ?: ""
 				val dateStr = div.selectFirst("a span:last-child")?.text()
 
-				val uploadDate = dateFormat.tryParse(dateStr)
+				val uploadDate = dateFormat.parseSafe(dateStr)
 
 				MangaChapter(
 					id = generateUid(url),

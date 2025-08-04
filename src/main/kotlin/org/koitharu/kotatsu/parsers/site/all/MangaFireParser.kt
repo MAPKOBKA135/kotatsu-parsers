@@ -13,7 +13,7 @@ import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.bitmap.Rect
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
@@ -28,7 +28,7 @@ internal abstract class MangaFireParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	private val siteLang: String,
-) : LegacyPagedMangaParser(context, source, 30), Interceptor, MangaParserAuthProvider {
+) : PagedMangaParser(context, source, 30), Interceptor, MangaParserAuthProvider {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("mangafire.to")
 
@@ -81,7 +81,13 @@ internal abstract class MangaFireParser(
 
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
 		availableTags = tags.get().values.toSet(),
-		availableStates = EnumSet.allOf(MangaState::class.java),
+		availableStates = EnumSet.of(
+			MangaState.ONGOING,
+			MangaState.FINISHED,
+			MangaState.ABANDONED,
+			MangaState.PAUSED,
+			MangaState.UPCOMING,
+		),
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
@@ -128,6 +134,7 @@ internal abstract class MangaFireParser(
 								MangaState.ABANDONED -> "discontinued"
 								MangaState.PAUSED -> "on_hiatus"
 								MangaState.UPCOMING -> "info"
+								else -> throw IllegalArgumentException("$state not supported")
 							},
 						)
 					}
@@ -288,7 +295,7 @@ internal abstract class MangaFireParser(
 				},
 				url = "${branch.type}/${it.attr("data-id")}",
 				scanlator = null,
-				uploadDate = dateFormat.tryParse(it.attr("upload-date")),
+				uploadDate = dateFormat.parseSafe(it.attr("upload-date")),
 				branch = "${branch.langTitle} ${branch.type.toTitleCase()}",
 				source = source,
 			)

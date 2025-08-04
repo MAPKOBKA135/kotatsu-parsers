@@ -12,7 +12,7 @@ import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.bitmap.Bitmap
 import org.koitharu.kotatsu.parsers.bitmap.Rect
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
@@ -23,7 +23,7 @@ import kotlin.math.min
 
 @MangaSourceParser("MANGAREADERTO", "MangaReader.To")
 internal class MangaReaderToParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.MANGAREADERTO, 16),
+	PagedMangaParser(context, MangaParserSource.MANGAREADERTO, 16),
 	Interceptor, MangaParserAuthProvider {
 
 	override val configKeyDomain = ConfigKey.Domain("mangareader.to")
@@ -76,7 +76,13 @@ internal class MangaReaderToParser(context: MangaLoaderContext) :
 
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
 		availableTags = tags.get().values.toSet(),
-		availableStates = EnumSet.allOf(MangaState::class.java),
+		availableStates = EnumSet.of(
+			MangaState.ONGOING,
+			MangaState.FINISHED,
+			MangaState.ABANDONED,
+			MangaState.PAUSED,
+			MangaState.UPCOMING,
+		),
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
@@ -105,13 +111,14 @@ internal class MangaReaderToParser(context: MangaLoaderContext) :
 					addQueryParameter("genres", filter.tags.joinToString(",") { it.key })
 					addQueryParameter(
 						name = "status",
-						value = when (filter.states.oneOrThrowIfMany()) {
+						value = when (val state = filter.states.oneOrThrowIfMany()) {
 							MangaState.ONGOING -> "2"
 							MangaState.FINISHED -> "1"
 							MangaState.ABANDONED -> "4"
 							MangaState.PAUSED -> "3"
 							MangaState.UPCOMING -> "5"
 							null -> ""
+							else -> throw IllegalArgumentException("$state not supported")
 						},
 					)
 				}

@@ -10,7 +10,7 @@ import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
+import org.koitharu.kotatsu.parsers.core.AbstractMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.model.ContentRating.SAFE
 import org.koitharu.kotatsu.parsers.model.ContentRating.SUGGESTIVE
@@ -22,7 +22,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("WEEBCENTRAL", "Weeb Central", "en")
-internal class WeebCentral(context: MangaLoaderContext) : LegacyMangaParser(context, MangaParserSource.WEEBCENTRAL),
+internal class WeebCentral(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.WEEBCENTRAL),
 	MangaParserAuthProvider {
 
 	override val configKeyDomain = ConfigKey.Domain("weebcentral.com")
@@ -318,7 +318,7 @@ internal class WeebCentral(context: MangaLoaderContext) : LegacyMangaParser(cont
 					"#d8b4fe" -> "Official"
 					else -> null
 				},
-				uploadDate = dateFormat.tryParse(
+				uploadDate = dateFormat.parseSafe(
 					element.selectFirst("time[datetime]")?.attr("datetime"),
 				),
 				branch = null,

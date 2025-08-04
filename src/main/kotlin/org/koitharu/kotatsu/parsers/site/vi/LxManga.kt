@@ -3,16 +3,16 @@ package org.koitharu.kotatsu.parsers.site.vi
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-internal class LxManga(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
-	override val configKeyDomain = ConfigKey.Domain("lxmanga.blog")
+	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -34,7 +34,7 @@ internal class LxManga(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
 		availableTags = availableTags(),
-		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
@@ -43,7 +43,6 @@ internal class LxManga(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 			append(domain)
 
 			when {
-
 				!filter.query.isNullOrEmpty() -> {
 					append("/tim-kiem")
 					append("?filter[name]=")
@@ -111,9 +110,10 @@ internal class LxManga(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 				filter.states.forEach {
 					append(
 						when (it) {
-							MangaState.ONGOING -> "2,"
-							MangaState.FINISHED -> "1,"
-							else -> "1,2"
+							MangaState.ONGOING -> "ongoing,"
+							MangaState.FINISHED -> "completed,"
+							MangaState.PAUSED -> "paused,"
+							else -> "ongoing,completed,paused"
 						},
 					)
 				}
@@ -177,7 +177,7 @@ internal class LxManga(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 					val href = a.attrAsRelativeUrl("href")
 					val name = a.selectFirst("span.text-ellipsis")?.text().orEmpty()
 					val dateText = a.parent()?.selectFirst("span.timeago")?.attr("datetime").orEmpty()
-					val scanlator = root.selectFirst("div.mt-2:contains(Nhóm dịch) span a")?.textOrNull()
+					val scanlator = root.selectFirst("div.mt-2:has(span:first-child:contains(Thực hiện:)) span:last-child")?.textOrNull()
 
 					MangaChapter(
 						id = generateUid(href),
@@ -186,7 +186,7 @@ internal class LxManga(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 						volume = 0,
 						url = href,
 						scanlator = scanlator,
-						uploadDate = chapterDateFormat.tryParse(dateText),
+						uploadDate = chapterDateFormat.parseSafe(dateText),
 						branch = null,
 						source = source,
 					)

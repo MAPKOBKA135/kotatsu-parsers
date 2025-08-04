@@ -7,14 +7,14 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGAAY", "MangaAy", "tr")
-internal class MangaAy(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.MANGAAY, 45) {
+internal class MangaAy(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MANGAAY, 45) {
 
 	override val configKeyDomain = ConfigKey.Domain("manga-ay.com")
 
@@ -90,14 +90,14 @@ internal class MangaAy(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 				url = href,
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				title = div.selectLast(".item-name")?.text().orEmpty(),
-				coverUrl = div.selectFirst("img")?.src().orEmpty(),
+				coverUrl = div.selectFirst("img")?.src(),
 				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
 				tags = emptySet(),
 				description = null,
 				state = null,
 				authors = emptySet(),
-				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				contentRating = sourceContentRating,
 				source = source,
 			)
 		}
@@ -119,7 +119,7 @@ internal class MangaAy(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 				description = null,
 				state = null,
 				authors = emptySet(),
-				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				contentRating = sourceContentRating,
 				source = source,
 			)
 		}
@@ -152,7 +152,8 @@ internal class MangaAy(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 		val tags = doc.select("P.card-text .bg-success").mapNotNullToSet { tagMap[it.text()] }
 		return manga.copy(
 			description = doc.selectFirst("p.card-text")?.html()?.substringAfterLast("<br>"),
-			coverUrl = doc.selectFirst("div.align-items-center div.align-items-center img")?.src().orEmpty(),
+			coverUrl = doc.selectFirst("div.align-items-center div.align-items-center img")?.src()
+				?: manga.coverUrl,
 			tags = tags,
 			chapters = doc.requireElementById("sonyuklemeler").select("tbody tr")
 				.mapChapters(reversed = true) { i, tr ->
@@ -165,7 +166,7 @@ internal class MangaAy(context: MangaLoaderContext) : LegacyPagedMangaParser(con
 						volume = 0,
 						url = href,
 						scanlator = null,
-						uploadDate = dateFormat.tryParse(tr.selectFirstOrThrow("time").attr("datetime")),
+						uploadDate = dateFormat.parseSafe(tr.selectFirstOrThrow("time").attr("datetime")),
 						branch = null,
 						source = source,
 					)

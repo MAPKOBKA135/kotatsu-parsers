@@ -4,7 +4,7 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("TRWEBTOON", "TrWebtoon", "tr")
 internal class TrWebtoon(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.TRWEBTOON, pageSize = 21) {
+	PagedMangaParser(context, MangaParserSource.TRWEBTOON, pageSize = 21) {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("trwebtoon.com")
 
@@ -104,7 +104,7 @@ internal class TrWebtoon(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = li.selectFirst("img")?.src().orEmpty(),
+				coverUrl = li.selectFirst("img")?.src(),
 				title = li.selectFirst(".table-responsive a")?.text().orEmpty(),
 				altTitles = emptySet(),
 				rating = li.selectFirst(".row .col-xl-4 .mt-2 .my-1 .text-muted")?.text()?.substringBefore("/")
@@ -117,7 +117,7 @@ internal class TrWebtoon(context: MangaLoaderContext) :
 					else -> null
 				},
 				source = source,
-				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				contentRating = sourceContentRating,
 			)
 		}
 	}
@@ -129,7 +129,7 @@ internal class TrWebtoon(context: MangaLoaderContext) :
 				id = generateUid(href),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
-				coverUrl = li.selectFirst(".figure img")?.src().orEmpty(),
+				coverUrl = li.selectFirst(".figure img")?.src(),
 				title = li.selectFirst(".title")?.text().orEmpty(),
 				altTitles = emptySet(),
 				rating = RATING_UNKNOWN,
@@ -207,7 +207,7 @@ internal class TrWebtoon(context: MangaLoaderContext) :
 
 			d.endsWith(" önce") -> parseRelativeDate(date)
 
-			else -> dateFormat.tryParse(date)
+			else -> dateFormat.parseSafe(date)
 		}
 	}
 

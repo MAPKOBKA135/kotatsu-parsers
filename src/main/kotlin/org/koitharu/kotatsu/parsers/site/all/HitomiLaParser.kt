@@ -13,7 +13,7 @@ import org.jsoup.Jsoup
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyMangaParser
+import org.koitharu.kotatsu.parsers.core.AbstractMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
@@ -30,7 +30,7 @@ import kotlin.math.min
 
 @OptIn(ExperimentalUnsignedTypes::class)
 @MangaSourceParser("HITOMILA", "Hitomi.La", type = ContentType.HENTAI)
-internal class HitomiLaParser(context: MangaLoaderContext) : LegacyMangaParser(context, MangaParserSource.HITOMILA) {
+internal class HitomiLaParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.HITOMILA) {
 	override val configKeyDomain = ConfigKey.Domain("hitomi.la")
 
 	private val cdnDomain = "gold-usergeneratedcontent.net"
@@ -590,7 +590,7 @@ internal class HitomiLaParser(context: MangaLoaderContext) : LegacyMangaParser(c
 					volume = 0,
 					branch = json.getString("language_localname"),
 					source = source,
-					uploadDate = dateFormat.tryParse(json.getString("date").substringBeforeLast("-")),
+					uploadDate = dateFormat.parseSafe(json.getString("date").substringBeforeLast("-")),
 				),
 			),
 		)

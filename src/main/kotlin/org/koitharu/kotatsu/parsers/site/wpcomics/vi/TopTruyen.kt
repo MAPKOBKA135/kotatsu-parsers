@@ -3,7 +3,6 @@ package org.koitharu.kotatsu.parsers.site.wpcomics.vi
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.site.wpcomics.WpComicsParser
 import org.koitharu.kotatsu.parsers.util.*
@@ -12,7 +11,7 @@ import java.util.*
 
 @MangaSourceParser("TOPTRUYEN", "TopTruyen", "vi")
 internal class TopTruyen(context: MangaLoaderContext) :
-	WpComicsParser(context, MangaParserSource.TOPTRUYEN, "www.toptruyentv8.pro", 36) {
+	WpComicsParser(context, MangaParserSource.TOPTRUYEN, "www.toptruyentv8.com", 36) {
 
 	override val datePattern = "dd/MM/yyyy"
 
@@ -206,7 +205,7 @@ internal class TopTruyen(context: MangaLoaderContext) :
 
 			absoluteTimePattern.matches(dateText) -> {
 				val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-				formatter.tryParse(dateText)
+				formatter.parseSafe(dateText)
 			}
 
 			else -> 0L
@@ -227,7 +226,7 @@ internal class TopTruyen(context: MangaLoaderContext) :
 				url.contains("toptruyentv5.jpg") ||
 				url.contains("toptruyentv6.jpg") ||
 				url.contains("toptruyentv7.jpg") ||
-                        url.contains("toptruyentv8.jpg") ||
+				url.contains("toptruyentv8.jpg") ||
 				url.contains("img_001_1743221470.png")) { // Remove ads images
 				return@mapNotNull null
 			}

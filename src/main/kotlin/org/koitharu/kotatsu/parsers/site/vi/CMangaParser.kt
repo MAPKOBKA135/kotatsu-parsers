@@ -7,7 +7,7 @@ import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -20,9 +20,9 @@ private const val PAGE_SIZE = 20
 
 @MangaSourceParser("CMANGA", "CManga", "vi")
 internal class CMangaParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.CMANGA, PAGE_SIZE), MangaParserAuthProvider {
+	PagedMangaParser(context, MangaParserSource.CMANGA, PAGE_SIZE), MangaParserAuthProvider {
 
-	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("cmangax2.com")
+	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("cmangax3.com")
 
 	override val availableSortOrders: Set<SortOrder>
 		get() = EnumSet.of(
@@ -94,7 +94,7 @@ internal class CMangaParser(context: MangaLoaderContext) :
 						number = chapterNumber,
 						volume = 0,
 						url = "/album/$slug/chapter-$mangaId-$chapterId",
-						uploadDate = df.tryParse(info.getString("last_update")),
+						uploadDate = df.parseSafe(info.getString("last_update")),
 						branch = null,
 						scanlator = null,
 						source = source,
@@ -230,10 +230,10 @@ internal class CMangaParser(context: MangaLoaderContext) :
 	private fun JSONObject.isLocked() = opt("lock") != null
 
 	private fun containsAdsUrl(url: String): Boolean {
-            val ADS_URL = "https://img.cmangapi.com/data-image/index.php"
+            val adsUrl = "https://img.cmangapi.com/data-image/index.php"
             val cleanUrl = url.replace("\\", "")
             return when {
-                  cleanUrl.startsWith(ADS_URL) -> true
+                  cleanUrl.startsWith(adsUrl) -> true
                   cleanUrl.contains("?v=12&data=") -> true
                   else -> false
             }

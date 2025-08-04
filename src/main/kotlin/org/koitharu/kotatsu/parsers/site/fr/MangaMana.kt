@@ -11,7 +11,7 @@ import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -23,7 +23,7 @@ import java.util.*
 
 @MangaSourceParser("MANGAMANA", "MangaMana", "fr")
 internal class MangaMana(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.MANGAMANA, 25) {
+	PagedMangaParser(context, MangaParserSource.MANGAMANA, 25) {
 
 	override val configKeyDomain = ConfigKey.Domain("www.manga-mana.com")
 
@@ -298,7 +298,7 @@ internal class MangaMana(context: MangaLoaderContext) :
 					volume = 0,
 					url = href,
 					scanlator = null,
-					uploadDate = dateFormat.tryParse(dateText),
+					uploadDate = dateFormat.parseSafe(dateText),
 					branch = null,
 					source = source,
 				)

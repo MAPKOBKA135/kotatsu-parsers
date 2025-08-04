@@ -3,7 +3,7 @@ package org.koitharu.kotatsu.parsers.site.en
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.DateFormat
@@ -12,7 +12,7 @@ import java.util.*
 
 @MangaSourceParser("MANGATOWN", "MangaTown", "en")
 internal class MangaTownParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.MANGATOWN, 30) {
+	PagedMangaParser(context, MangaParserSource.MANGATOWN, 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("www.mangatown.com")
 
@@ -249,7 +249,7 @@ internal class MangaTownParser(context: MangaLoaderContext) :
 			date.isNullOrEmpty() -> 0L
 			date.contains("Today") -> Calendar.getInstance().timeInMillis
 			date.contains("Yesterday") -> Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -1) }.timeInMillis
-			else -> dateFormat.tryParse(date)
+			else -> dateFormat.parseSafe(date)
 		}
 	}
 

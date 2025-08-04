@@ -11,7 +11,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -24,10 +24,10 @@ internal abstract class WpComicsParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 48,
-) : LegacyPagedMangaParser(context, source, pageSize) {
+) : PagedMangaParser(context, source, pageSize) {
 
 	companion object {
-		const val netDomain = "nettruyen1975.com"
+		const val GLOBAL_NETTRUYEN_DOMAIN = "nettruyen1905.com"
 	}
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
@@ -310,9 +310,9 @@ internal abstract class WpComicsParser(
 				} else {
 					it
 				}
-			}.let { dateFormat.tryParse(it.joinToString(" ")) }
+			}.let { dateFormat.parseSafe(it.joinToString(" ")) }
 
-			else -> dateFormat.tryParse(date)
+			else -> dateFormat.parseSafe(date)
 		}
 	}
 

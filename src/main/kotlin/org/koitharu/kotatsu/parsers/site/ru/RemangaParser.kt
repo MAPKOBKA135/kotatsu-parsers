@@ -11,7 +11,7 @@ import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ContentUnavailableException
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
@@ -29,7 +29,7 @@ private const val TOO_MANY_REQUESTS = 429
 @MangaSourceParser("REMANGA", "Реманга", "ru")
 internal class RemangaParser(
 	context: MangaLoaderContext,
-) : LegacyPagedMangaParser(context, MangaParserSource.REMANGA, PAGE_SIZE), MangaParserAuthProvider, Interceptor {
+) : PagedMangaParser(context, MangaParserSource.REMANGA, PAGE_SIZE), MangaParserAuthProvider, Interceptor {
 
 	private val baseHeaders: Headers
 		get() = Headers.Builder()
@@ -176,7 +176,7 @@ internal class RemangaParser(
 					number = jo.getIntOrDefault("index", chapters.size - i).toFloat(),
 					volume = 0,
 					title = name.nullIfEmpty(),
-					uploadDate = dateFormat.tryParse(jo.getString("upload_date")),
+					uploadDate = dateFormat.parseSafe(jo.getString("upload_date")),
 					scanlator = publishers?.optJSONObject(0)?.getStringOrNull("name"),
 					source = MangaParserSource.REMANGA,
 					branch = null,
@@ -192,7 +192,7 @@ internal class RemangaParser(
 		val pages = content.optJSONArray("pages")
 		if (pages == null) {
 			val pubDate = content.getStringOrNull("pub_date")?.let {
-				SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).tryParse(it)
+				SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parseSafe(it)
 			}
 			if (pubDate != null && pubDate > System.currentTimeMillis()) {
 				val at = SimpleDateFormat.getDateInstance(DateFormat.LONG).format(Date(pubDate))

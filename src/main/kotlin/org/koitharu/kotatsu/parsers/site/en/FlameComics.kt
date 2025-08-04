@@ -7,17 +7,17 @@ import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacySinglePageMangaParser
+import org.koitharu.kotatsu.parsers.core.SinglePageMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
-import java.util.*
+import java.util.EnumSet
 import java.util.concurrent.TimeUnit
 
 @MangaSourceParser("FLAMECOMICS", "FlameComics", "en")
 internal class FlameComics(context: MangaLoaderContext) :
-	LegacySinglePageMangaParser(context, MangaParserSource.FLAMECOMICS) {
+	SinglePageMangaParser(context, MangaParserSource.FLAMECOMICS) {
 
 	private val commonPrefix = suspendLazy(initializer = ::fetchCommonPrefix)
 	private val removeSpecialCharsRegex = Regex("[^A-Za-z0-9 ]")
@@ -123,6 +123,8 @@ internal class FlameComics(context: MangaLoaderContext) :
 		.addQueryParameter(
 			"url",
 			urlBuilder("cdn")
+				.addPathSegment("uploads")
+				.addPathSegment("images")
 				.addPathSegment("series")
 				.addPathSegment(seriesId.toString())
 				.addPathSegments(url)
@@ -235,6 +237,6 @@ internal class FlameComics(context: MangaLoaderContext) :
 	private fun String.toMangaTag() = MangaTag(
 		title = this.toTitleCase(sourceLocale),
 		key = this.lowercase().trim(),
-		source = source
+		source = source,
 	)
 }

@@ -8,7 +8,7 @@ import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.mapJSON
@@ -19,7 +19,7 @@ import java.util.*
 @Broken
 @MangaSourceParser("FLIXSCANS", "FlixScans.net", "ar")
 internal class FlixScans(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.FLIXSCANS, 18) {
+	PagedMangaParser(context, MangaParserSource.FLIXSCANS, 18) {
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
 	override val configKeyDomain = ConfigKey.Domain("flixscans.net")
@@ -32,7 +32,13 @@ internal class FlixScans(context: MangaLoaderContext) :
 
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
 		availableTags = fetchAvailableTags(),
-		availableStates = EnumSet.allOf(MangaState::class.java),
+		availableStates = EnumSet.of(
+			MangaState.ONGOING,
+			MangaState.FINISHED,
+			MangaState.ABANDONED,
+			MangaState.PAUSED,
+			MangaState.UPCOMING,
+		),
 		availableContentRating = EnumSet.of(ContentRating.ADULT),
 	)
 
@@ -78,6 +84,7 @@ internal class FlixScans(context: MangaLoaderContext) :
 										MangaState.ABANDONED -> "droped"
 										MangaState.PAUSED -> "onhold"
 										MangaState.UPCOMING -> "soon"
+										else -> throw IllegalArgumentException("$it not supported")
 									},
 								)
 							}
@@ -195,7 +202,7 @@ internal class FlixScans(context: MangaLoaderContext) :
 				number = i + 1f,
 				volume = 0,
 				branch = null,
-				uploadDate = dateFormat.tryParse(date),
+				uploadDate = dateFormat.parseSafe(date),
 				scanlator = null,
 				source = source,
 			)

@@ -5,7 +5,7 @@ import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
@@ -16,9 +16,9 @@ import java.util.*
 
 @MangaSourceParser("DAMCONUONG", "Dâm Cô Nương", "vi", type = ContentType.HENTAI)
 internal class DamCoNuong(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
+	PagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
 
-	override val configKeyDomain = ConfigKey.Domain("damconuong.cam")
+	override val configKeyDomain = ConfigKey.Domain("damconuong.run")
 
 	private val availableTags = suspendLazy(initializer = ::fetchTags)
 
@@ -100,7 +100,7 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 		return parseMangaList(doc)
 	}
 
-	private suspend fun parseMangaList(doc: Document): List<Manga> {
+	private fun parseMangaList(doc: Document): List<Manga> {
 		return doc.select("div.border.rounded-lg.border-gray-300.dark\\:border-dark-blue.bg-white.dark\\:bg-fire-blue.manga-vertical")
 			.map { element ->
 				val mainA = element.selectFirstOrThrow("div.relative a")

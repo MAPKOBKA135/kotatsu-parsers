@@ -9,7 +9,7 @@ import okhttp3.Response
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -19,7 +19,7 @@ internal abstract class NineMangaParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	defaultDomain: String,
-) : LegacyPagedMangaParser(context, source, pageSize = 26), Interceptor {
+) : PagedMangaParser(context, source, pageSize = 26), Interceptor {
 
 	override val configKeyDomain = ConfigKey.Domain(defaultDomain)
 
@@ -233,7 +233,7 @@ internal abstract class NineMangaParser(
 
 		if (dateWords.size == 3) {
 			if (dateWords[1].contains(",")) {
-				SimpleDateFormat("MMM d, yyyy", Locale.ENGLISH).tryParse(date)
+				SimpleDateFormat("MMM d, yyyy", Locale.ENGLISH).parseSafe(date)
 			} else {
 				val timeAgo = Integer.parseInt(dateWords[0])
 				return Calendar.getInstance().apply {

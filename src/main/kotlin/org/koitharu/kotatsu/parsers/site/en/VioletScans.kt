@@ -4,7 +4,7 @@ import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.PagedMangaParser
+import org.koitharu.kotatsu.parsers.core.FlexiblePagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.model.search.MangaSearchQuery
 import org.koitharu.kotatsu.parsers.model.search.MangaSearchQueryCapabilities
@@ -17,15 +17,14 @@ import org.koitharu.kotatsu.parsers.util.generateUid
 import org.koitharu.kotatsu.parsers.util.parseHtml
 import org.koitharu.kotatsu.parsers.util.selectFirstOrThrow
 import org.koitharu.kotatsu.parsers.util.urlEncoded
-import org.koitharu.kotatsu.parsers.util.tryParse
-import org.koitharu.kotatsu.parsers.util.mapChapters
+import org.koitharu.kotatsu.parsers.util.parseSafe
 import java.text.SimpleDateFormat
 import java.util.Locale
 
 @MangaSourceParser("VIOLETSCANS", "VioletScans", "en")
-internal class VioletScans(context: MangaLoaderContext):
-	PagedMangaParser(context, MangaParserSource.VIOLETSCANS, 12) {
-	
+internal class VioletScans(context: MangaLoaderContext) :
+	FlexiblePagedMangaParser(context, MangaParserSource.VIOLETSCANS, 12) {
+
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("violetscans.com")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -55,6 +54,7 @@ internal class VioletScans(context: MangaLoaderContext):
 						searchParameter = criterion.value.toString()
 					}
 				}
+
 				is QueryCriteria.Exclude<*> -> null
 				is QueryCriteria.Range<*> -> null
 				is QueryCriteria.Include<*> -> null
@@ -199,7 +199,7 @@ internal class VioletScans(context: MangaLoaderContext):
 		}
 
 		val dateFormat = SimpleDateFormat("MMMM d, yyyy", Locale.ENGLISH)
-		val date = dateFormat.tryParse(dateString) ?: 0L
+		val date = dateFormat.parseSafe(dateString) ?: 0L
 
 		val chaptersList = root.selectFirstOrThrow("#chapterlist ul")
 		val chapters = chaptersList.select("li")
