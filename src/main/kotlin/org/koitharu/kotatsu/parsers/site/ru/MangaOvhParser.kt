@@ -4,6 +4,7 @@ import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
+import org.json.JSONArray
 import org.koitharu.kotatsu.parsers.InternalParsersApi
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
@@ -16,6 +17,17 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGA_OVH", "Манга ОВХ", "ru")
+fun JSONArray.joinToString(
+    separator: CharSequence = ", ",
+    transform: (JSONObject) -> String
+): String {
+    val sb = StringBuilder()
+    for (i in 0 until length()) {
+        if (i > 0) sb.append(separator)
+        sb.append(transform(getJSONObject(i)))
+    }
+    return sb.toString()
+}
 internal class MangaOVHParser(
 	context: MangaLoaderContext,
 ) : PagedMangaParser(context, MangaParserSource.MANGA_OVH, pageSize = 20) {
