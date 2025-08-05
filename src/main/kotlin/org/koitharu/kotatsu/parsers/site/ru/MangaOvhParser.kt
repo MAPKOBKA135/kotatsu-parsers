@@ -194,44 +194,56 @@ internal class MangaOVHParser(
 	override suspend fun getPageUrl(page: MangaPage): String = page.url +"?width=1200&type=webp&quality=75"
 
 	private suspend fun getChapters(mangaId: String): List<MangaChapter> {
-		val url =
-			urlBuilder("api")
-				.addPathSegment("v2")
-				.addPathSegment("chapters")
-				.addQueryParameter("bookId", mangaId)
-		val ja = webClient.httpGet(url.build()).parseJsonArray()
-		val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.ROOT)
-		val branches = ArrayMap<String, String>()
-		return ja
-			.mapJSON { jo ->
-				val number = jo.getFloatOrDefault("number", 0f)
-				val volume = jo.getIntOrDefault("volume", 0)
-				val branchId = jo.getString("branchId")
-				MangaChapter(
-					id = generateUid(jo.getString("id")),
-					title = jo.getStringOrNull("name"),
-					number = number,
-					volume = volume,
-					url = jo.getString("id"),
-					scanlator = null,
-					uploadDate = dateFormat.parseSafe(jo.getString("createdAt")),
-					branch = branches.getOrPut(branchId) { getBranchName(branchId) },
-					source = source,
-				)
-			}.reversed()
-	}
+    val url =
+        urlBuilder("api")
+            .addPathSegment("v2")
+            .addPathSegment("chapters")
+            .addQueryParameter("bookId", mangaId)
+    val ja = webClient.httpGet(url.build()).parseJsonArray()
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.ROOT)
+
+    return ja
+        .mapJSON { jo ->
+            val number = jo.getFloatOrDefault("number", 0f)
+            val volume = jo.getIntOrDefault("volume", 0)
+            val branchId = jo.getString("branchId")
+
+            // Пробуем получить переводчика из publishers главы
+            val scanlatorFromChapter = jo.getJSONArrayOrNull("publishers")?.let { publishers ->
+                publishers.mapJSONToString { it.getString("name") }
+                    ?.filterNotNull()
+                    ?.joinToString(", ")
+            }
+
+            // Если в главе нет publishers, получаем из ветки
+            val scanlator = scanlatorFromChapter ?: getBranchName(branchId)
+
+            MangaChapter(
+                id = generateUid(jo.getString("id")),
+                title = jo.getStringOrNull("name"),
+                number = number,
+                volume = volume,
+                url = jo.getString("id"),
+                scanlator = scanlator, // Теперь здесь либо название, либо null
+                uploadDate = dateFormat.parseSafe(jo.getString("createdAt")),
+                branch = branchId, // Можно оставить ID ветки или заменить на scanlator
+                source = source,
+            )
+        }.reversed()
+}
 
 	private suspend fun getBranchName(id: String): String? =
-		runCatchingCancellable {
-			val url =
-				urlBuilder("api")
-					.addPathSegment("branch")
-					.addPathSegment(id)
-			val json = webClient.httpGet(url.build()).parseJson()
-			json.getJSONArray("publishers").mapJSONToSet { it.getStringOrNull("name") }.firstOrNull()
-		}.getOrElse {
-			id.substringBefore('-')
-		}
+    runCatchingCancellable {
+        val url =
+            urlBuilder("api")
+                .addPathSegment("branch")
+                .addPathSegment(id)
+        val json = webClient.httpGet(url.build()).parseJson()
+        json.getJSONArray("publishers")
+            .mapJSONToString { it.getString("name") }
+            ?.filterNotNull()
+            ?.joinToString(", ")
+    }.getOrNull() // Возвращаем null, если не удалось получить название
 
 	private fun String.toMangaState() =
 		when (this.uppercase(Locale.ROOT)) {
