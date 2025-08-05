@@ -4,7 +4,6 @@ import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
-import org.json.JSONArray
 import org.koitharu.kotatsu.parsers.InternalParsersApi
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
@@ -17,17 +16,6 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANGA_OVH", "Манга ОВХ", "ru")
-fun JSONArray.joinToString(
-    separator: CharSequence = ", ",
-    transform: (JSONObject) -> String
-): String {
-    val sb = StringBuilder()
-    for (i in 0 until length()) {
-        if (i > 0) sb.append(separator)
-        sb.append(transform(getJSONObject(i)))
-    }
-    return sb.toString()
-}
 internal class MangaOVHParser(
 	context: MangaLoaderContext,
 ) : PagedMangaParser(context, MangaParserSource.MANGA_OVH, pageSize = 20) {
@@ -206,56 +194,44 @@ internal class MangaOVHParser(
 	override suspend fun getPageUrl(page: MangaPage): String = page.url +"?width=1200&type=webp&quality=75"
 
 	private suspend fun getChapters(mangaId: String): List<MangaChapter> {
-    val url = urlBuilder("api")
-        .addPathSegment("v2")
-        .addPathSegment("chapters")
-        .addQueryParameter("bookId", mangaId)
-    val ja = webClient.httpGet(url.build()).parseJsonArray()
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.ROOT)
+		val url =
+			urlBuilder("api")
+				.addPathSegment("v2")
+				.addPathSegment("chapters")
+				.addQueryParameter("bookId", mangaId)
+		val ja = webClient.httpGet(url.build()).parseJsonArray()
+		val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.ROOT)
+		val branches = ArrayMap<String, String>()
+		return ja
+			.mapJSON { jo ->
+				val number = jo.getFloatOrDefault("number", 0f)
+				val volume = jo.getIntOrDefault("volume", 0)
+				val branchId = jo.getString("branchId")
+				MangaChapter(
+					id = generateUid(jo.getString("id")),
+					title = jo.getStringOrNull("name"),
+					number = number,
+					volume = volume,
+					url = jo.getString("id"),
+					scanlator = null,
+					uploadDate = dateFormat.parseSafe(jo.getString("createdAt")),
+					branch = branches.getOrPut(branchId) { getBranchName(branchId) },
+					source = source,
+				)
+			}.reversed()
+	}
 
-    return ja.map { jo ->
-        val chapterObj = jo as JSONObject
-        val number = chapterObj.optDouble("number", 0.0).toFloat()
-        val volume = chapterObj.optInt("volume", 0)
-        val branchId = chapterObj.getString("branchId")
-
-        // Получаем переводчиков из publishers главы
-        val scanlatorFromChapter = if (chapterObj.has("publishers")) {
-            chapterObj.getJSONArray("publishers")
-                .joinToString(", ") { it.getString("name") }
-        } else {
-            null
-        }
-
-        // Если в главе нет publishers, получаем из ветки
-        val scanlator = scanlatorFromChapter ?: getBranchName(branchId)
-
-        MangaChapter(
-            id = generateUid(chapterObj.getString("id")),
-            title = chapterObj.optString("name", null),
-            number = number,
-            volume = volume,
-            url = chapterObj.getString("id"),
-            scanlator = scanlator,
-            uploadDate = dateFormat.parseSafe(chapterObj.getString("createdAt")),
-            branch = branchId,
-            source = source,
-        )
-    }.reversed()
-}
-
-	private suspend fun getBranchName(id: String): String? = runCatchingCancellable {
-    val url = urlBuilder("api")
-        .addPathSegment("branch")
-        .addPathSegment(id)
-    val json = webClient.httpGet(url.build()).parseJson()
-    if (json.has("publishers")) {
-        json.getJSONArray("publishers")
-            .joinToString(", ") { it.getString("name") }
-    } else {
-        null
-    }
-}.getOrNull()
+	private suspend fun getBranchName(id: String): String? =
+		runCatchingCancellable {
+			val url =
+				urlBuilder("api")
+					.addPathSegment("branch")
+					.addPathSegment(id)
+			val json = webClient.httpGet(url.build()).parseJson()
+			json.getJSONArray("publishers").mapJSONToSet { it.getStringOrNull("name") }.firstOrNull()
+		}.getOrElse {
+			id.substringBefore('-')
+		}
 
 	private fun String.toMangaState() =
 		when (this.uppercase(Locale.ROOT)) {
