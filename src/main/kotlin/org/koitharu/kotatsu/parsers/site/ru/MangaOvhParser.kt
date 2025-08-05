@@ -194,56 +194,56 @@ internal class MangaOVHParser(
 	override suspend fun getPageUrl(page: MangaPage): String = page.url +"?width=1200&type=webp&quality=75"
 
 	private suspend fun getChapters(mangaId: String): List<MangaChapter> {
-    val url =
-        urlBuilder("api")
-            .addPathSegment("v2")
-            .addPathSegment("chapters")
-            .addQueryParameter("bookId", mangaId)
+    val url = urlBuilder("api")
+        .addPathSegment("v2")
+        .addPathSegment("chapters")
+        .addQueryParameter("bookId", mangaId)
     val ja = webClient.httpGet(url.build()).parseJsonArray()
     val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.ROOT)
 
-    return ja
-        .mapJSON { jo ->
-            val number = jo.getFloatOrDefault("number", 0f)
-            val volume = jo.getIntOrDefault("volume", 0)
-            val branchId = jo.getString("branchId")
+    return ja.map { jo ->
+        val chapterObj = jo as JSONObject
+        val number = chapterObj.optDouble("number", 0.0).toFloat()
+        val volume = chapterObj.optInt("volume", 0)
+        val branchId = chapterObj.getString("branchId")
 
-            // Пробуем получить переводчика из publishers главы
-            val scanlatorFromChapter = jo.getJSONArrayOrNull("publishers")?.let { publishers ->
-                publishers.mapJSONToString { it.getString("name") }
-                    ?.filterNotNull()
-                    ?.joinToString(", ")
-            }
+        // Получаем переводчиков из publishers главы
+        val scanlatorFromChapter = if (chapterObj.has("publishers")) {
+            chapterObj.getJSONArray("publishers")
+                .joinToString(", ") { it.getString("name") }
+        } else {
+            null
+        }
 
-            // Если в главе нет publishers, получаем из ветки
-            val scanlator = scanlatorFromChapter ?: getBranchName(branchId)
+        // Если в главе нет publishers, получаем из ветки
+        val scanlator = scanlatorFromChapter ?: getBranchName(branchId)
 
-            MangaChapter(
-                id = generateUid(jo.getString("id")),
-                title = jo.getStringOrNull("name"),
-                number = number,
-                volume = volume,
-                url = jo.getString("id"),
-                scanlator = scanlator, // Теперь здесь либо название, либо null
-                uploadDate = dateFormat.parseSafe(jo.getString("createdAt")),
-                branch = branchId, // Можно оставить ID ветки или заменить на scanlator
-                source = source,
-            )
-        }.reversed()
+        MangaChapter(
+            id = generateUid(chapterObj.getString("id")),
+            title = chapterObj.optString("name", null),
+            number = number,
+            volume = volume,
+            url = chapterObj.getString("id"),
+            scanlator = scanlator,
+            uploadDate = dateFormat.parseSafe(chapterObj.getString("createdAt")),
+            branch = branchId,
+            source = source,
+        )
+    }.reversed()
 }
 
-	private suspend fun getBranchName(id: String): String? =
-    runCatchingCancellable {
-        val url =
-            urlBuilder("api")
-                .addPathSegment("branch")
-                .addPathSegment(id)
-        val json = webClient.httpGet(url.build()).parseJson()
+	private suspend fun getBranchName(id: String): String? = runCatchingCancellable {
+    val url = urlBuilder("api")
+        .addPathSegment("branch")
+        .addPathSegment(id)
+    val json = webClient.httpGet(url.build()).parseJson()
+    if (json.has("publishers")) {
         json.getJSONArray("publishers")
-            .mapJSONToString { it.getString("name") }
-            ?.filterNotNull()
-            ?.joinToString(", ")
-    }.getOrNull() // Возвращаем null, если не удалось получить название
+            .joinToString(", ") { it.getString("name") }
+    } else {
+        null
+    }
+}.getOrNull()
 
 	private fun String.toMangaState() =
 		when (this.uppercase(Locale.ROOT)) {
