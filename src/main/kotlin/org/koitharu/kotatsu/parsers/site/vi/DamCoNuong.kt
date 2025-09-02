@@ -18,7 +18,7 @@ import java.util.*
 internal class DamCoNuong(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
 
-	override val configKeyDomain = ConfigKey.Domain("damconuong.run")
+	override val configKeyDomain = ConfigKey.Domain("damconuong.skin")
 
 	private val availableTags = suspendLazy(initializer = ::fetchTags)
 
@@ -75,8 +75,8 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 				filter.states.forEach {
 					append(
 						when (it) {
-							MangaState.ONGOING -> "2"
-							MangaState.FINISHED -> "1"
+							MangaState.ONGOING -> "2,"
+							MangaState.FINISHED -> "1,"
 							else -> "2,1"
 						},
 					)
@@ -93,6 +93,11 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 				append(filter.query.urlEncoded())
 			}
 
+			if (filter.tagsExclude.isNotEmpty()) {
+				append("&filter[reject_genres]=")
+				append(filter.tagsExclude.joinTo(this, ",") { it.key })
+			}
+
 			append("&page=$page")
 		}
 
@@ -101,30 +106,33 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	}
 
 	private fun parseMangaList(doc: Document): List<Manga> {
-		return doc.select("div.border.rounded-lg.border-gray-300.dark\\:border-dark-blue.bg-white.dark\\:bg-fire-blue.manga-vertical")
-			.map { element ->
-				val mainA = element.selectFirstOrThrow("div.relative a")
-				val href = mainA.attrAsRelativeUrl("href")
-				val title = element.selectFirst("div.latest-chapter a.text-white.capitalize")?.textOrNull() ?: "No name"
-				val coverUrl = element.selectFirst("img.rounded-t-lg.cover.lazyload")?.let { img ->
-					img.attr("data-src").takeUnless { it.isNullOrEmpty() } ?: img.requireSrc()
-				}
+		return doc.select(
+			"div.border.rounded-xl.border-gray-300.dark\\:border-dark-blue.bg-white.dark\\:bg-fire-blue"
+		).map { element ->
+			val mainA = element.selectFirstOrThrow("div.relative a")
+			val href = mainA.attrAsRelativeUrl("href")
+			val title = mainA.selectFirst("div.cover-frame img")?.attr("alt")
+				?.takeIf { it.isNotBlank() }
+				?: element.selectFirst("div.p-3 h3 a")?.text()?.takeIf { it.isNotBlank() }
+				?: "Không có tiêu đề"
+			val coverUrl = mainA.select("div.cover-frame img").attr("data-src").takeIf { it.isNotBlank() }
+				?: mainA.select("div.cover-frame img").attr("src")
 
-				Manga(
-					id = generateUid(href),
-					title = title,
-					altTitles = emptySet(),
-					url = href,
-					publicUrl = href.toAbsoluteUrl(domain),
-					rating = RATING_UNKNOWN,
-					contentRating = ContentRating.ADULT,
-					coverUrl = coverUrl,
-					tags = emptySet(),
-					state = null,
-					authors = emptySet(),
-					source = source,
-				)
-			}
+			Manga(
+				id = generateUid(href),
+				title = title,
+				altTitles = emptySet(),
+				url = href,
+				publicUrl = href.toAbsoluteUrl(domain),
+				rating = RATING_UNKNOWN,
+				contentRating = ContentRating.ADULT,
+				coverUrl = coverUrl,
+				tags = emptySet(),
+				state = null,
+				authors = emptySet(),
+				source = source,
+			)
+		}
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga {
@@ -176,18 +184,39 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-		return doc.select("div.text-center img.max-w-full.my-0.mx-auto").map { img ->
-			val url = img.attr("src") ?: img.attr("data-src")
-				?: throw ParseException("Image src not found!", chapter.url)
-			MangaPage(
-				id = generateUid(url),
-				url = url,
-				preview = null,
-				source = source,
-			)
-		}
-	}
+    val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+
+    doc.selectFirst("script:containsData(window.encryptionConfig)")?.data()?.let { scriptContent ->
+        val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?])""")
+        val arrayString = fallbackUrlsRegex.find(scriptContent)?.groupValues?.get(1) ?: return@let
+        val urlRegex = Regex("""(https?:\\?/\\?[^"]+\.(?:jpg|jpeg|png|webp|gif))""")
+        val scriptImages = urlRegex.findAll(arrayString).map {
+            it.groupValues[1].replace("\\/", "/")
+        }.toList()
+
+        if (scriptImages.isNotEmpty()) {
+            return scriptImages.map { url ->
+                MangaPage(id = generateUid(url), url = url, preview = null, source = source)
+            }
+        }
+    }
+
+    val tagImagePages = doc.select("div#chapter-content img").mapNotNull { img ->
+        val imageUrl = (img.attr("abs:src").takeIf { it.isNotBlank() }
+            ?: img.attr("abs:data-src").takeIf { it.isNotBlank() })
+            ?.trim()
+
+        imageUrl?.let {
+            MangaPage(id = generateUid(it), url = it, preview = null, source = source)
+        }
+    }
+
+    if (tagImagePages.isNotEmpty()) {
+        return tagImagePages
+    }
+
+    throw ParseException("Không tìm thấy bất kỳ nguồn ảnh nào (đã thử cả script và thẻ img).", chapter.url)
+}
 
 	private fun parseChapterDate(date: String?): Long {
 		if (date == null) return 0
