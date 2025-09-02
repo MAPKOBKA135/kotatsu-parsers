@@ -191,7 +191,7 @@ internal class MangaOVHParser(
 		return ja.mapJSON { jo -> jo.toManga() }
 	}
 
-	override suspend fun getPageUrl(page: MangaPage): String = page.url +"?width=1200&type=webp&quality=75"
+	override suspend fun getPageUrl(page: MangaPage): String = page.url +"&width=1200&type=webp&quality=75"
 
 	private suspend fun getChapters(mangaId: String): List<MangaChapter> {
 		val url =
