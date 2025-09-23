@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.parsers.site.all
 
+import okhttp3.Headers
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
@@ -22,13 +23,15 @@ import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.util.attrAsRelativeUrl
 import org.koitharu.kotatsu.parsers.util.generateUid
 import org.koitharu.kotatsu.parsers.util.mapToSet
+import org.koitharu.kotatsu.parsers.util.oneOrThrowIfMany
 import org.koitharu.kotatsu.parsers.util.parseHtml
+import org.koitharu.kotatsu.parsers.util.splitByWhitespace
 import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
-import org.koitharu.kotatsu.parsers.util.urlEncoded
 import java.text.SimpleDateFormat
 import java.util.EnumSet
 import java.util.Locale
 import java.util.regex.Pattern
+import kotlin.collections.joinToString
 
 @MangaSourceParser("MYREADINGMANGA", "MyReadingManga", type = ContentType.HENTAI)
 internal class MyReadingManga(context: MangaLoaderContext) :
@@ -36,19 +39,22 @@ internal class MyReadingManga(context: MangaLoaderContext) :
 
 	override val configKeyDomain = ConfigKey.Domain("myreadingmanga.info")
 
-	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
-		super.onCreateConfig(keys)
-		keys.add(userAgentKey)
-	}
+    override fun getRequestHeaders(): Headers = Headers.Builder()
+        .add("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36")
+        .add("X-Requested-With", randomString((1..20).random()))
+        .build()
 
 	override val filterCapabilities: MangaListFilterCapabilities
 		get() = MangaListFilterCapabilities(
 			isSearchSupported = true,
-			isOriginalLocaleSupported = true,
+            isSearchWithFiltersSupported = true,
+            isMultipleTagsSupported = true,
 		)
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-		SortOrder.UPDATED,
+        SortOrder.RELEVANCE,
+        SortOrder.NEWEST,
+        SortOrder.NEWEST_ASC,
 	)
 
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
@@ -56,6 +62,8 @@ internal class MyReadingManga(context: MangaLoaderContext) :
 		availableStates = EnumSet.of(
 			MangaState.ONGOING,
 			MangaState.FINISHED,
+            MangaState.PAUSED,
+            MangaState.ABANDONED,
 		),
 		availableContentRating = EnumSet.of(ContentRating.ADULT),
 		availableLocales = setOf(
@@ -100,6 +108,8 @@ internal class MyReadingManga(context: MangaLoaderContext) :
 
 	private fun getLanguageSlug(locale: Locale?): String? {
 		return when {
+            locale?.language == "en" -> "english"
+            locale?.language == "ja" -> "japanese"
 			locale?.language == "fr" -> "french"
 			locale?.language == "ja" -> "jp"
 			locale?.language == "zh" && locale.country == "TW" -> "traditional-chinese"
@@ -139,75 +149,53 @@ internal class MyReadingManga(context: MangaLoaderContext) :
 		}
 	}
 
-
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
 
-			// Add language path if specified
-			val langSlug = getLanguageSlug(filter.locale)
-			if (langSlug != null) {
-				append("/lang/")
-				append(langSlug)
-			}
+            if (page > 1) {
+                append("/page/")
+                append(page)
+            }
 
-			when {
-				!filter.query.isNullOrEmpty() -> {
-					// Search with language: /lang/french/page/2/?s=example
-					if (page > 1) {
-						append("/page/")
-						append(page)
-					}
-					append("/?s=")
-					append(filter.query.urlEncoded())
-				}
+            append("/?ep_sort=")
+            when (order) {
+                SortOrder.NEWEST -> append("date")
+                SortOrder.NEWEST_ASC -> append("date_asc")
+                else -> append("")
+            }
 
-				filter.tags.isNotEmpty() -> {
-					// Genre filtering doesn't work with language, so we ignore language for genre
-					if (langSlug == null) {
-						append("/genre/")
-						append(filter.tags.first().key)
-						append("/page/")
-						append(page)
-						append("/")
-					} else {
-						// If both language and genre are selected, just use language
-						append("/page/")
-						append(page)
-						append("/")
-					}
-				}
+            append("&s=")
+            if (!filter.query.isNullOrEmpty()) {
+                append(filter.query.splitByWhitespace().joinToString(separator = "+"))
+            }
 
-				filter.states.isNotEmpty() -> {
-					// Status filtering doesn't work with language either
-					if (langSlug == null) {
-						append("/status/")
-						append(
-							when (filter.states.first()) {
-								MangaState.ONGOING -> "ongoing"
-								MangaState.FINISHED -> "completed"
-								else -> "ongoing"
-							},
-						)
-						append("/page/")
-						append(page)
-						append("/")
-					} else {
-						// If both language and status are selected, just use language
-						append("/page/")
-						append(page)
-						append("/")
-					}
-				}
+            val langSlug = getLanguageSlug(filter.locale)
+            if (langSlug != null) {
+                append("&ep_filter_lang=")
+                append(langSlug)
+            }
 
-				else -> {
-					// Regular browsing with or without language
-					append("/page/")
-					append(page)
-					append("/")
-				}
-			}
+            if (filter.states.isNotEmpty()) {
+                append("&ep_filter_status=")
+                filter.states.oneOrThrowIfMany()?.let {
+                    append(
+                        when (it) {
+                            MangaState.ONGOING -> "ongoing"
+                            MangaState.FINISHED -> "completed"
+                            MangaState.PAUSED -> "hiatus"
+                            MangaState.ABANDONED -> "dropped"
+                            else -> ""
+                        }
+                    )
+                }
+            }
+
+            if (filter.tags.isNotEmpty()) {
+                append("&ep_filter_genre=")
+                append(filter.tags.joinToString(",") { it.key })
+            }
 		}
 
 		val doc = webClient.httpGet(url).parseHtml()
@@ -287,10 +275,10 @@ internal class MyReadingManga(context: MangaLoaderContext) :
 
 		val genres = mutableSetOf<MangaTag>()
 
-		doc.select("span.entry-terms:has(span:contains(Genres)) a").forEach {
+		doc.select("span.entry-terms:has(span:contains(Genre:)) a").forEach {
 			genres.add(
 				MangaTag(
-					title = it.text(),
+					title = it.text().removeSuffix(",").trim(),
 					key = it.attr("href").substringAfterLast("/genre/").substringBefore("/"),
 					source = source,
 				),
@@ -300,6 +288,8 @@ internal class MyReadingManga(context: MangaLoaderContext) :
 		val state = when (doc.select("a[href*=status]").firstOrNull()?.text()) {
 			"Ongoing" -> MangaState.ONGOING
 			"Completed" -> MangaState.FINISHED
+            "Hiatus" -> MangaState.PAUSED
+            "Dropped" -> MangaState.ABANDONED
 			else -> null
 		}
 
@@ -356,15 +346,15 @@ internal class MyReadingManga(context: MangaLoaderContext) :
 
     private fun findImageSrc(element: Element?): String? {
         element ?: return null
-        
+
         return when {
-            element.hasAttr("data-src") && imgRegex.matcher(element.attr("data-src")).find() -> 
+            element.hasAttr("data-src") && imgRegex.matcher(element.attr("data-src")).find() ->
                 element.absUrl("data-src")
-            element.hasAttr("data-cfsrc") && imgRegex.matcher(element.attr("data-cfsrc")).find() -> 
+            element.hasAttr("data-cfsrc") && imgRegex.matcher(element.attr("data-cfsrc")).find() ->
                 element.absUrl("data-cfsrc")
-            element.hasAttr("src") && imgRegex.matcher(element.attr("src")).find() -> 
+            element.hasAttr("src") && imgRegex.matcher(element.attr("src")).find() ->
                 element.absUrl("src")
-            element.hasAttr("data-lazy-src") -> 
+            element.hasAttr("data-lazy-src") ->
                 element.absUrl("data-lazy-src")
             else -> null
         }
@@ -447,5 +437,10 @@ internal class MyReadingManga(context: MangaLoaderContext) :
 			0L
 		}
 	}
+
+    private fun randomString(length: Int): String {
+        val charPool = ('a'..'z') + ('A'..'Z')
+        return List(length) { charPool.random() }.joinToString("")
+    }
 }
 
