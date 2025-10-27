@@ -14,7 +14,7 @@ import java.util.*
 @MangaSourceParser("KURONEKO", "Kuro Neko / vi-Hentai", "vi", type = ContentType.HENTAI)
 internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.KURONEKO, 30) {
 
-	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
+	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe", "vi-hentai.org")
 
 	private val pagesRequestMutex = Mutex()
 	private var lastPagesRequestTime = 0L
@@ -105,7 +105,7 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 				append("&keyword=")
 				append(filter.query.urlEncoded())
 			}
-			
+
 			if (page > 1) {
 				append("&page=")
 				append(page)
@@ -254,6 +254,5 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 
 	companion object {
 		private const val PAGES_REQUEST_DELAY_MS = 5000L
-		const val PATH = "AxsAEQdJWk4YDUkHDgcVEwxaBQoHShIXHwYbD1seHAwHOwAKCAYFFw==\n"
 	}
 }
