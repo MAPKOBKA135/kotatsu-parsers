@@ -316,7 +316,20 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 			else -> 0f
 		}
 	}
+    private suspend fun resolvePageUrl(pageId: String): String {
+    val url = HttpUrl.Builder()
+        .scheme("https")
+        .host(apiDomain)
+        .addPathSegment("v2")
+        .addPathSegment("pages")
+        .addPathSegment(pageId)
+        .addPathSegment("image")
+        .build()
 
+    // Ответ = {"url": "https://cdnXX.../signed.jpeg?token=..."}
+    val resp = webClient.httpGet(url).parseJsonObject()
+    return resp.getString("url")
+    }
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val data = fetchAstroData(chapter.url)
 			?: throw ParseException("Не удалось получить Astro JSON для страниц главы", chapter.url)
@@ -331,7 +344,7 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 			.sortedBy { it["index"].toSafeInt() }
 			.mapNotNull { pageMap ->
 				val id = pageMap["id"] as? String
-				val imageUrl = pageMap["image"] as? String
+				val imageUrl = resolvePageUrl(id)
 				if (id == null || imageUrl == null) return@mapNotNull null
 
 				MangaPage(
