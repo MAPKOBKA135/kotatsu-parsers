@@ -150,12 +150,15 @@ internal class DesuMeParser(context: MangaLoaderContext) :
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         val fullUrl = chapter.url.toAbsoluteUrl(domain)
+        val pagesJson = json.getJSONObject("pages")
+        val chapterId = pagesJson.getJSONObject("ch_curr").getLong("id")
         val json = webClient.httpGet(fullUrl)
             .parseJson()
             .getJSONObject("response") ?: throw ParseException("Invalid response", fullUrl)
         return json.getJSONObject("pages").getJSONArray("list").mapJSON { jo ->
+            val pageNumber = jo.getInt("page")
             MangaPage(
-                id = generateUid(jo.getLong("id")),
+                id = generateUid(chapterId * 1000 + pageNumber),
                 preview = null,
                 source = chapter.source,
                 url = jo.getString("img"),
