@@ -326,35 +326,36 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
         .addPathSegment("image")
         .build()
 
-    // Ответ = {"url": "https://cdnXX.../signed.jpeg?token=..."}
-    val json = webClient.httpGet(url).json()
-    return resp.getString("url")
+    val body = webClient.httpGet(url).body
+        
+    val json = org.json.JSONObject(body)
+    return json.getString("url")
     }
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val data = fetchAstroData(chapter.url)
-			?: throw ParseException("Не удалось получить Astro JSON для страниц главы", chapter.url)
+    val data = fetchAstroData(chapter.url)
+        ?: throw ParseException("Не удалось получить Astro JSON для страниц главы", chapter.url)
 
-		val chapterData = data["reader-current-chapter"] as? Map<*, *>
-			?: throw ParseException("Ключ 'reader-current-chapter' не найден", chapter.url)
+    val chapterData = data["reader-current-chapter"] as? Map<*, *>
+        ?: throw ParseException("Ключ 'reader-current-chapter' не найден", chapter.url)
 
-		val pagesList = chapterData["pages"] as? List<Map<*, *>>
-			?: throw ParseException("Список страниц 'pages' не найден", chapter.url)
+    val pagesList = chapterData["pages"] as? List<Map<*, *>>
+        ?: throw ParseException("Список страниц 'pages' не найден", chapter.url)
 
-		return pagesList
-			.sortedBy { it["index"].toSafeInt() }
-			.mapNotNull { pageMap ->
-				val id = pageMap["id"]?.toString() ?: return@mapNotNull null
-				val imageUrl = resolvePageUrl(id)
-				//if (id == null || imageUrl == null) return@mapNotNull null
+    return pagesList
+        .sortedBy { it["index"].toSafeInt() }
+        .mapNotNull { pageMap ->
+            val id = pageMap["id"]?.toString() ?: return@mapNotNull null
+            val imageUrl = resolvePageUrl(id)
 
-				MangaPage(
-					id = generateUid(id),
-					url = "$imageUrl",
-					preview = null,
-					source = source
-				)
-			}
-	}
+            MangaPage(
+                id = generateUid(id),
+                url = imageUrl,
+                preview = null,
+                source = source
+            )
+        }
+    }
+
 
 	private suspend fun fetchAstroData(relativeUrl: String): Map<*, *>? {
 		val fullUrl = relativeUrl.toAbsoluteUrl(domain)
