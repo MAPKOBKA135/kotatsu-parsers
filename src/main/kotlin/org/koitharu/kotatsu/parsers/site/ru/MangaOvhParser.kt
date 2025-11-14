@@ -327,7 +327,7 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
         .build()
 
     // Ответ = {"url": "https://cdnXX.../signed.jpeg?token=..."}
-    val resp = webClient.httpGet(url).parseJsonObject()
+    val json = webClient.httpGet(url).json()
     return resp.getString("url")
     }
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
@@ -343,9 +343,9 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 		return pagesList
 			.sortedBy { it["index"].toSafeInt() }
 			.mapNotNull { pageMap ->
-				val id = pageMap["id"] as? String
+				val id = pageMap["id"]?.toString() ?: return@mapNotNull null
 				val imageUrl = resolvePageUrl(id)
-				if (id == null || imageUrl == null) return@mapNotNull null
+				//if (id == null || imageUrl == null) return@mapNotNull null
 
 				MangaPage(
 					id = generateUid(id),
