@@ -316,45 +316,53 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 			else -> 0f
 		}
 	}
-    private suspend fun resolvePageUrl(pageId: String): String {
+    private suspend fun resolvePageUrl(pageId: String): String? {
     val url = HttpUrl.Builder()
         .scheme("https")
-        .host(apiDomain)
+        .host(apiDomain) // например api.inkstory.net
         .addPathSegment("v2")
         .addPathSegment("pages")
         .addPathSegment(pageId)
         .addPathSegment("image")
         .build()
 
-    val body = webClient.httpGet(url).body
-        
-    val json = org.json.JSONObject(body)
-    return json.getString("url")
+    val responseText = webClient.httpGet(url).use { it.body?.string() ?: return null }
+
+    return try {
+        val json = JSONObject(responseText)
+        json.getString("url")
+    } catch (e: Exception) {
+        null
     }
+}
+
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-    val data = fetchAstroData(chapter.url)
-        ?: throw ParseException("Не удалось получить Astro JSON для страниц главы", chapter.url)
+        val data = fetchAstroData(chapter.url)
+            ?: throw ParseException("Не удалось получить Astro JSON для страниц главы", chapter.url)
 
-    val chapterData = data["reader-current-chapter"] as? Map<*, *>
-        ?: throw ParseException("Ключ 'reader-current-chapter' не найден", chapter.url)
+        val chapterData = data["reader-current-chapter"] as? Map<*, *>
+            ?: throw ParseException("Ключ 'reader-current-chapter' не найден", chapter.url)
 
-    val pagesList = chapterData["pages"] as? List<Map<*, *>>
-        ?: throw ParseException("Список страниц 'pages' не найден", chapter.url)
+        val pagesList = chapterData["pages"] as? List<Map<*, *>>
+            ?: throw ParseException("Список страниц 'pages' не найден", chapter.url)
 
-    return pagesList
-        .sortedBy { it["index"].toSafeInt() }
-        .mapNotNull { pageMap ->
-            val id = pageMap["id"]?.toString() ?: return@mapNotNull null
-            val imageUrl = resolvePageUrl(id)
+        return pagesList
+            .sortedBy { it["index"].toSafeInt() }
+            .mapNotNull { pageMap ->
+                val id = pageMap["id"] as? String ?: return@mapNotNull null
 
-            MangaPage(
-                id = generateUid(id),
-                url = imageUrl,
-                preview = null,
-                source = source
-            )
-        }
+                val imageUrl = resolvePageUrl(id)
+                    ?: return@mapNotNull null
+
+                MangaPage(
+                    id = generateUid(id),
+                    url = imageUrl,
+                    preview = null,
+                    source = source
+                )
+            }
     }
+
 
 
 	private suspend fun fetchAstroData(relativeUrl: String): Map<*, *>? {
