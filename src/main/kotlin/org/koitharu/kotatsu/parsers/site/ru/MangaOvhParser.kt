@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.parsers.site.ru
 
 import okhttp3.Headers
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
@@ -32,7 +33,13 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 		setFirstPage(0)
 	}
 
-	override val configKeyDomain = ConfigKey.Domain("zenmanga.io", "v1.zenmanga.one", "v1.zenmanga.me")
+	override val configKeyDomain = ConfigKey.Domain(
+		"inkstory.net",
+		"manga.ovh",
+		"zenmanga.io",
+		"v1.zenmanga.one",
+		"v1.zenmanga.me",
+	)
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.POPULARITY,
@@ -55,13 +62,16 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 	override val authUrl: String
 		get() = "https://sso.inuko.me/account/sign-in"
 
-	private val apiDomain = if (domain.startsWith("v1.")) domain.replace("v1.", "api.") else "api.$domain"
+	private val normalizedDomain = normalizeDomain(domain)
+	private val apiDomain = "api.$normalizedDomain"
 
 	private fun checkAuth(): Boolean {
 		val authCookieName = "__otaku_session"
-		return context.cookieJar.getCookies("zenmanga.io").any { it.name == authCookieName } ||
+		return context.cookieJar.getCookies(normalizedDomain).any { it.name == authCookieName } ||
+			context.cookieJar.getCookies("zenmanga.io").any { it.name == authCookieName } ||
 			context.cookieJar.getCookies("v1.zenmanga.one").any { it.name == authCookieName } ||
-			context.cookieJar.getCookies("v1.zenmanga.me").any { it.name == authCookieName }
+			context.cookieJar.getCookies("v1.zenmanga.me").any { it.name == authCookieName } ||
+			context.cookieJar.getCookies("manga.ovh").any { it.name == authCookieName }
 	}
 
 	override suspend fun isAuthorized(): Boolean {
@@ -187,7 +197,7 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 		val nameObj = json.getJSONObject("name")
 		val title = nameObj.getStringOrNull("ru") ?: nameObj.getString("en")
 
-		val publicUrl = "https://$domain/content/$slug"
+		val publicUrl = "https://$normalizedDomain/content/$slug"
 
 		val altNames = json.getJSONArray("altNames")
 			.mapJSON { it.getString("name") }
@@ -196,7 +206,7 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 		return Manga(
 			id = generateUid(publicUrl),
 			url = "/content/$slug",
-			publicUrl = "https://$domain/content/$slug",
+			publicUrl = publicUrl,
 			title = title,
 			altTitles = altNames,
 			coverUrl = json.getStringOrNull("poster"),
@@ -316,57 +326,104 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 			else -> 0f
 		}
 	}
-    private suspend fun resolvePageUrl(pageId: String): String? {
-    val url = HttpUrl.Builder()
-        .scheme("https")
-        .host(apiDomain) // например api.inkstory.net
-        .addPathSegment("v2")
-        .addPathSegment("pages")
-        .addPathSegment(pageId)
-        .addPathSegment("image")
-        .build()
+	private suspend fun resolvePageUrl(pageId: String): String? {
+		val url = HttpUrl.Builder()
+			.scheme("https")
+			.host(apiDomain)
+			.addPathSegment("v2")
+			.addPathSegment("pages")
+			.addPathSegment(pageId)
+			.addPathSegment("image")
+			.build()
 
-    val responseText = webClient.httpGet(url).use { it.body?.string() ?: return null }
+		return runCatching {
+			webClient.httpGet(url).use { response ->
+				val responseText = response.body?.string() ?: return null
+				JSONObject(responseText).getStringOrNull("url")
+			}
+		}.getOrNull()
+	}
 
-    return try {
-        val json = JSONObject(responseText)
-        json.getString("url")
-    } catch (e: Exception) {
-        null
-    }
-}
+	private fun normalizePageImageUrl(rawUrl: String, secretKey: String?): String {
+		val originalUrl = rawUrl.toHttpUrlOrNull() ?: return rawUrl
+		if (!originalUrl.host.endsWith("inuko.me") || !originalUrl.encodedPath.contains("/chapters/")) {
+			return rawUrl
+		}
+
+		val builder = originalUrl.newBuilder()
+
+		val lastSegment = originalUrl.pathSegments.lastOrNull()
+		val encryptedMode = when {
+			lastSegment.isNullOrBlank() -> null
+			else -> {
+				val dot = lastSegment.lastIndexOf('.')
+				val name = if (dot >= 0) lastSegment.substring(0, dot) else lastSegment
+				val extension = if (dot >= 0) lastSegment.substring(dot) else ""
+				if (name.length == 36) {
+					when (name[14]) {
+						'x' -> "xor"
+						's' -> {
+							val rewrittenName = name.replaceRange(14, 15, "x") + extension
+							builder.setPathSegment(originalUrl.pathSize - 1, rewrittenName)
+							"xor"
+						}
+						else -> null
+					}
+				} else null
+			}
+		}
+
+		if (originalUrl.queryParameter("width").isNullOrBlank()) {
+			builder.setQueryParameter("width", "1600")
+		}
+		if (originalUrl.queryParameter("type").isNullOrBlank()) {
+			builder.setQueryParameter("type", "webp")
+		}
+		if (originalUrl.queryParameter("quality").isNullOrBlank()) {
+			builder.setQueryParameter("quality", "75")
+		}
+
+		if (encryptedMode == "xor" && !secretKey.isNullOrBlank()) {
+			builder.fragment("ik=xor:$secretKey")
+		}
+
+		return builder.build().toString()
+	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-        val data = fetchAstroData(chapter.url)
-            ?: throw ParseException("Не удалось получить Astro JSON для страниц главы", chapter.url)
+		val data = fetchAstroData(chapter.url)
+			?: throw ParseException("Не удалось получить Astro JSON для страниц главы", chapter.url)
+		val secretKey = (data["secret-key"] as? String)?.ifBlank { null }
 
-        val chapterData = data["reader-current-chapter"] as? Map<*, *>
-            ?: throw ParseException("Ключ 'reader-current-chapter' не найден", chapter.url)
+		val chapterData = data["reader-current-chapter"] as? Map<*, *>
+			?: throw ParseException("Ключ 'reader-current-chapter' не найден", chapter.url)
 
-        val pagesList = chapterData["pages"] as? List<Map<*, *>>
-            ?: throw ParseException("Список страниц 'pages' не найден", chapter.url)
+		val pagesList = chapterData["pages"] as? List<Map<*, *>>
+			?: throw ParseException("Список страниц 'pages' не найден", chapter.url)
 
-        return pagesList
-            .sortedBy { it["index"].toSafeInt() }
-            .mapNotNull { pageMap ->
-                val id = pageMap["id"] as? String ?: return@mapNotNull null
+		return pagesList
+			.sortedBy { it["index"].toSafeInt() }
+			.mapNotNull { pageMap ->
+				val id = pageMap["id"] as? String ?: return@mapNotNull null
+				val imageUrl = (pageMap["image"] as? String)
+					?.ifBlank { null }
+					?.let { normalizePageImageUrl(it, secretKey) }
+					?: resolvePageUrl(id)
+						?.ifBlank { null }
+						?.let { normalizePageImageUrl(it, secretKey) }
+					?: return@mapNotNull null
 
-                val imageUrl = resolvePageUrl(id)
-                    ?: return@mapNotNull null
-
-                MangaPage(
-                    id = generateUid(id),
-                    url = imageUrl,
-                    preview = null,
-                    source = source
-                )
-            }
-    }
-
-
+				MangaPage(
+					id = generateUid(id),
+					url = imageUrl,
+					preview = null,
+					source = source
+				)
+			}
+	}
 
 	private suspend fun fetchAstroData(relativeUrl: String): Map<*, *>? {
-		val fullUrl = relativeUrl.toAbsoluteUrl(domain)
+		val fullUrl = relativeUrl.toAbsoluteUrl(normalizedDomain)
 
 		val response = webClient.httpGet(fullUrl)
 
@@ -506,6 +563,20 @@ internal class MangaOVHParser(context: MangaLoaderContext,) :
 				}
 				else -> item
 			}
+		}
+	}
+
+	private fun normalizeDomain(raw: String): String = when (raw.lowercase(Locale.ROOT)) {
+		"inkstory.net" -> "inkstory.net"
+		"manga.ovh" -> "inkstory.net"
+		"inkstory.me" -> "inkstory.net"
+		"zenmanga.io" -> "inkstory.net"
+		"v1.zenmanga.one" -> "inkstory.net"
+		"v1.zenmanga.me" -> "inkstory.net"
+		else -> if (raw.startsWith("v1.")) {
+			raw.removePrefix("v1.")
+		} else {
+			raw
 		}
 	}
 }
